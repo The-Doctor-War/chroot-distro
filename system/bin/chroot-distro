@@ -425,8 +425,8 @@ command_install() {
 }
 
 chroot_distro_warn_if_unsupported_busybox() {
-    current_version=$(busybox | grep -oE 'v[0-9]+(\.[0-9]+)+' | sed 's/v//')
-    if [ "$(echo "$current_version" | sed 's/\.//g')" -lt "1361" ]; then
+    current_version=$(busybox | sed -n 's/.* v\([0-9.]*\).*/\1/p' | tr -d '.')
+    if [ "$current_version" -lt 1361 ]; then
         msg "The installed BusyBox version ($current_version) is outdated and may cause compatibility issues."
         msg "Upgrade to BusyBox v1.36.1 or newer for optimal performance."
     fi
