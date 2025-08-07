@@ -373,7 +373,26 @@ chroot_distro_warn_if_unsupported_busybox() {
 }
 
 command_install_help() {
-    msg "Will add that in future"
+    msg
+    msg "${YELLOW}Usage: ${CYAN}${PROGRAM_NAME} ${GREEN}install ${CYAN}[${GREEN}DISTRIBUTION${CYAN}]${RST}"
+    msg
+    msg "${CYAN}Command aliases: ${GREEN}i${CYAN}, ${GREEN}in${CYAN}, ${GREEN}ins${CYAN}, ${GREEN}add${RST}"
+    msg
+    msg "${CYAN}Install a Linux distribution from a remote repository.${RST}"
+    msg
+    msg "${CYAN}Options:${RST}"
+    msg
+    msg "  ${GREEN}--help               ${CYAN}- Show this help information${RST}"
+    msg
+    msg "${CYAN}Examples:${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} install ubuntu${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} install debian${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} install archlinux${RST}"
+    msg
+    msg "${CYAN}Use '${GREEN}${PROGRAM_NAME} list${CYAN}' to see available distributions.${RST}"
+    msg
+    show_version
+    msg
 }
 
 #############################################################################
@@ -1188,6 +1207,47 @@ command_unmount_help() {
 
 #############################################################################
 #
+# FUNCTION TO PRINT UTILITY USAGE INFORMATION
+#
+# Prints a description of Chroot-Distro utility and list of the available
+# commands.
+#
+#############################################################################
+
+command_help() {
+    msg
+    msg "${GREEN}${PROGRAM_NAME} v${PROGRAM_VERSION}${RST}"
+    msg
+    msg "${YELLOW}Usage: ${CYAN}${PROGRAM_NAME} ${GREEN}COMMAND ${CYAN}[${GREEN}OPTIONS${CYAN}] [${GREEN}ARGUMENTS${CYAN}]${RST}"
+    msg
+    msg "${CYAN}A tool for managing chrooted Linux distributions.${RST}"
+    msg
+    msg "${CYAN}Available commands:${RST}"
+    msg
+    msg "  ${GREEN}install${CYAN}, ${GREEN}i${CYAN}, ${GREEN}add          ${CYAN}Install a Linux distribution${RST}"
+    msg "  ${GREEN}login${CYAN}, ${GREEN}sh                ${CYAN}Start shell or run command in distribution${RST}"
+    msg "  ${GREEN}list${CYAN}, ${GREEN}ls                 ${CYAN}Show available and installed distributions${RST}"
+    msg "  ${GREEN}remove${CYAN}, ${GREEN}rm               ${CYAN}Remove an installed distribution${RST}"
+    msg "  ${GREEN}unmount${CYAN}, ${GREEN}umount${CYAN}, ${GREEN}um     ${CYAN}Unmount system points for distribution${RST}"
+    msg "  ${GREEN}clear-cache${CYAN}, ${GREEN}clear${CYAN}, ${GREEN}cl ${CYAN}Clear downloaded tarball cache${RST}"
+    msg "  ${GREEN}help${CYAN}, ${GREEN}--help${CYAN}, ${GREEN}-h        ${CYAN}Show this help information${RST}"
+    msg "  ${GREEN}--version${CYAN}, ${GREEN}-v           ${CYAN}Show version information${RST}"
+    msg
+    msg "${CYAN}Examples:${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} install ubuntu${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} login ubuntu${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} login ubuntu -- apt update${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} remove ubuntu${RST}"
+    msg
+    msg "${CYAN}For detailed help on a specific command, use:${RST}"
+    msg "  ${GREEN}${PROGRAM_NAME} COMMAND --help${RST}"
+    msg
+    show_version
+    msg
+}
+
+#############################################################################
+#
 # FUNCTION TO PRINT VERSION STRING
 #
 # Prints version & author information. Used in functions for displaying
@@ -1197,10 +1257,6 @@ command_unmount_help() {
 
 show_version() {
     msg "${CYAN}Chroot-Distro v${PROGRAM_VERSION} by @sabamdarif.${RST}"
-}
-
-command_help() {
-    msg "Will add that in future"
 }
 
 chroot_distro_warn_if_unsupported_busybox
