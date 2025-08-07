@@ -412,7 +412,6 @@ command_login() {
     custom_fs_bindings=""
     login_user="root"
     login_wd=""
-    login_env_vars=""
     distro_name=""
     exec_command=""
 
@@ -494,29 +493,6 @@ command_login() {
                 return 1
             fi
             ;;
-        --env)
-            if [ $# -ge 2 ]; then
-                shift 1
-
-                if [ -z "$1" ]; then
-                    msg
-                    msg "${BRED}Error: argument to option '${YELLOW}--env${BRED}' should not be empty.${RST}"
-                    command_login_help
-                    return 1
-                fi
-
-                if [ -z "$login_env_vars" ]; then
-                    login_env_vars="$1"
-                else
-                    login_env_vars="$login_env_vars $1"
-                fi
-            else
-                msg
-                msg "${BRED}Error: option '${YELLOW}--env${BRED}' requires an argument.${RST}"
-                command_login_help
-                return 1
-            fi
-            ;;
         -*)
             msg
             msg "${BRED}Error: got unknown option '${YELLOW}${1}${BRED}'.${RST}"
@@ -594,39 +570,8 @@ command_login() {
         return 1
     fi
 
-    # Handle /etc/environment - POSIX sh compatible version
-    env_from_file=""
-    if [ -e "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/environment" ]; then
-        # Read environment variables from /etc/environment
-        while IFS= read -r line || [ -n "$line" ]; do
-            # Skip empty lines and comments
-            case "$line" in
-            '' | '#'*) continue ;;
-            esac
-
-            # Check if line matches pattern VAR=value
-            case "$line" in
-            *=*)
-                # Remove quotes from the value if present
-                clean_line=$(echo "$line" | sed -E 's/^([^=]+=)["'"'"']?([^"'"'"']*)["'"'"']?$/\1\2/')
-                if [ -z "$env_from_file" ]; then
-                    env_from_file="$clean_line"
-                else
-                    env_from_file="$env_from_file $clean_line"
-                fi
-                ;;
-            esac
-        done <"${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/environment"
-    fi
-
     # Combine environment variables
-    all_env_vars="PATH=${DEFAULT_PATH_ENV}"
-    if [ -n "$env_from_file" ]; then
-        all_env_vars="$all_env_vars $env_from_file"
-    fi
-    if [ -n "$login_env_vars" ]; then
-        all_env_vars="$all_env_vars $login_env_vars"
-    fi
+    login_env_vars="PATH=${DEFAULT_PATH_ENV}"
 
     # Create necessary directories if they don't exist
     if [ ! -d "${INSTALLED_ROOTFS_DIR}/${distro_name}/tmp" ]; then
@@ -705,7 +650,7 @@ command_login() {
 
     # Determine what to execute
     if [ -n "$exec_command" ]; then
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/env -i $all_env_vars \
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/env -i $login_env_vars \
             TERM=xterm-256color \
             HOME="$login_home" \
             USER="$login_user" \
@@ -713,12 +658,12 @@ command_login() {
             /bin/su -s "$login_shell" "$login_user" -c \
             "cd '$login_wd' 2>/dev/null && exec $exec_command"
     else
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/env -i $all_env_vars \
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/env -i $login_env_vars \
             TERM=xterm-256color \
             HOME="$login_home" \
             USER="$login_user" \
             PWD="$login_wd" \
-            /bin/su - "$login_user" -s "$login_shell"
+            /bin/su - "$login_user" -s "$login_shell" -c "cd $login_wd && exec $login_shell"
     fi
 
     command_unmount_system_points
