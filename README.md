@@ -1,122 +1,177 @@
 # chroot-distro (WIP)
 
-***chroot-distro***: Installs GNU/Linux distributions in a chroot environment on Android.  
-- Based on [proot-distro](https://github.com/termux/proot-distro).
+**chroot-distro** installs GNU/Linux distributions in a chroot environment on Android.  
+- Based on [proot-distro](https://github.com/termux/proot-distro)
 
-## Commands
-Usage basics:
-```
+---
+
+## ⚠️ Warning
+
+- **Root access is required**.
+- This tool may delete files or modify the system. Use with caution.
+- **Back up** important files and system partitions before use.
+- Recommended: BusyBox **v1.36.1** for Android NDK  
+  ❌ Avoid: BusyBox **v1.32.1** (known bugs)
+
+---
+
+## ✅ Requirements
+
+### • Rooted Android Device
+
+All root implementations are compatible.
+
+Use **chroot-distro** from any terminal app (e.g., Termux).
+
+### • BusyBox for Android NDK
+
+Install the [latest BusyBox for Android NDK](https://github.com/osm0sis/android-busybox-ndk) by [osm0sis](https://github.com/osm0sis) as a Magisk module.
+
+- ✅ **Recommended:** v1.36.1  
+- ❌ **Avoid:** v1.32.1  
+- ℹ️ Outdated versions may cause issues
+
+---
+
+## 📦 Supported Distributions
+
+- **Debian**
+- **Ubuntu**
+- **Fedora**
+- **Arch Linux**
+
+---
+
+## 🚀 Usage
+
+Basic syntax:
+```bash
 chroot-distro <command> <arguments>
-```
+````
 
-Where `<command>` is a chroot-distro action command (see below to learn what
-is available) and `<arguments>` is a list of options specific to given command.
+Example — install Debian:
 
-Example of installing the distribution:
-```
+```bash
 chroot-distro install debian
 ```
 
-Some commands support aliases. For example, instead of
+---
+
+## 🧩 Command Aliases
+
+| Full Command  | Aliases                     |
+| ------------- | --------------------------- |
+| `help`        | `--help`, `-h`, `he`, `hel` |
+| `version`     | `--version`, `-v`           |
+| `list`        | `li`, `ls`                  |
+| `install`     | `i`, `in`, `ins`, `add`     |
+| `login`       | `sh`                        |
+| `remove`      | `rm`                        |
+| `unmount`     | `umount`, `um`              |
+| `clear-cache` | `clear`, `cl`               |
+
+---
+
+## 🛠️ Commands
+
+### `help`
+
+Display general or command-specific help:
+
+```bash
+chroot-distro help
+chroot-distro <command> --help
 ```
+
+---
+
+### `list` (or `ls`, `li`)
+
+List available distributions, their aliases, installation status, and comments:
+
+```bash
 chroot-distro list
+```
+
+---
+
+### `install <distro>` (or `i`, `in`, `ins`, `add`)
+
+Install a supported distribution:
+
+```bash
 chroot-distro install debian
-chroot-distro login debian
-chroot-distro remove debian
 ```
 
-you can type this:
-```
-chroot-distro ls
-chroot-distro i debian
-chroot-distro sh debian
-chroot-distro rm debian
-```
+---
 
-Command: `help`
+### `login <distro>` (or `sh`)
 
-This command will show the help information about `chroot-distro` usage.
-* `chroot-distro help` - main page.
-* `chroot-distro <command> --help` - view help for specific command.
+Enter a shell inside the installed distribution:
 
-### Listing distributions
-
-Command: `list`
-
-Aliases: `li`, `ls`
-
-Shows a list of available distributions, their aliases, installation status
-and comments.
-
-### Start shell session
-
-Command: `login`
-
-Aliases: `sh`
-
-Execute a shell within the given distribution. Example:
-```
+```bash
 chroot-distro login debian
 ```
 
-Execute a shell as specified user in the given distribution:
-```
-chroot-distro login --user admin debian
-```
+#### Options:
 
-You can run a custom command as well:
-```
-chroot-distro login debian -- /usr/local/bin/mycommand --sample-option1
-```
+* `--user <username>` – Login as a specified user (must already exist inside chroot)
+* `--termux-home` – Mount Termux home directory
+* `--bind <host_path>:<chroot_path>` – Bind path from host to chroot
+* `--work-dir <path>` – Set custom working directory (default: user's home)
 
-Argument `--` acts as terminator of `chroot-distro login` options processing.
-All arguments behind it would not be treated as options of Chroot Distro.
+#### Run a command inside the chroot:
 
-Login command supports these behavior modifying options:
-* `--user <username>`
-
-  Use a custom login user instead of default `root`. You need to create the
-  user via `useradd -U -m username` before using this option.
-
-* `--termux-home`
-
-  Mount Termux home directory as user home inside chroot environment.
-
-* `--bind path:path`
-
-  Create a custom file system path binding. Option expects argument in the
-  given format:
-  ```
-  <host path>:<chroot path>
-  ```
-* `--work-dir`
-
-  Set the working directory to given value. By default the working directory
-  is same as user home.
-
-### Uninstall distribution
-
-Command: `remove`
-
-Aliases: `rm`
-
-This command completely deletes the installation of given system. Be careful
-as it does not ask for confirmation. Deleted data is irrecoverably lost.
-
-Usage example:
-```
-chroot-distro remove debian
+```bash
+chroot-distro login debian -- /usr/local/bin/python3 script.py
 ```
 
-### Clear downloads cache
+Use `--` to separate chroot-distro options from the target command.
 
-Command: `clear-cache`
+---
 
-Aliases: `clear`, `cl`
+### `unmount <distro>` (or `umount`, `um`)
 
-This will remove all cached root file system archives.
+Unmount all mount points related to a distribution.
 
-## Acknowledgments:
+#### Options:
+
+* `--force`, `-f` – Force unmount by killing processes
+* `--help` – Show help for this command
+
+#### Examples:
+
+```bash
+chroot-distro unmount debian
+chroot-distro unmount --force debian
+```
+
+---
+
+### `remove <distro>` (or `rm`)
+
+Remove the installed distribution.
+⚠️ This is **irreversible** and will not ask for confirmation.
+
+```bash
+chroot-distro remove fedora
+```
+
+---
+
+### `clear-cache` (or `clear`, `cl`)
+
+Remove all downloaded rootfs archives:
+
+```bash
+chroot-distro clear-cache
+```
+
+---
+
+## 🙏 Acknowledgments
+
 Special thanks to:
-- [proot-distro](https://github.com/termux/proot-distro)
-- [Magisk-Modules-Alt-Repo/chroot-distro](https://github.com/Magisk-Modules-Alt-Repo/chroot-distro)
+
+* [proot-distro](https://github.com/termux/proot-distro)
+* [Magisk-Modules-Alt-Repo/chroot-distro](https://github.com/Magisk-Modules-Alt-Repo/chroot-distro)
