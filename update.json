@@ -1,6 +1,6 @@
 {
-  "version": "1.0-beta2",
-  "versionCode": 11,
-  "zipUrl": "https://github.com/sabamdarif/chroot-distro/releases/download/1.0-beta2/chroot-distro.zip",
+  "version": "1.0",
+  "versionCode": 12,
+  "zipUrl": "https://github.com/sabamdarif/chroot-distro/releases/download/1.0/chroot-distro.zip",
   "changelog": "https://raw.githubusercontent.com/sabamdarif/chroot-distro/main/CHANGELOG.md"
 }

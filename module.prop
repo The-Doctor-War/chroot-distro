@@ -1,7 +1,7 @@
 id=chroot-distro
 name=chroot-distro
-version=1.0-beta2
-versionCode=11
+version=1.0
+versionCode=12
 author=@sabamdarif
 description=Install Gnu/Linux distributions on Android (for sabamdarif/termux-desktop)
 updateJson=https://raw.githubusercontent.com/sabamdarif/chroot-distro/main/update.json
