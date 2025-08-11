@@ -1,5 +1,13 @@
 # Changelog
 
+### v1.1
+- fix: add missing clear cache option, proper handle command_install
+- feat: add function to set right permission before mount, fix some mount paths
+- docs: update readme
+- style: add some comments and rearrange few stuff
+- fix: chnage fuser busybox fuser because there is no fuser in toybox
+- feat: add a uninstall script to safely unmount the install distro and remove them
+
 ### v1.0.1
 - fix: error bash: no job control in this shell when using --user flag
 - feat: improve the mount and unmount points
