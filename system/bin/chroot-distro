@@ -794,6 +794,19 @@ command_login() {
     safe_mount "/proc/self/fd/1" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/stdout"
     safe_mount "/proc/self/fd/2" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/stderr"
 
+    if [ "$distro_name" = "archlinux" ]; then
+        mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/var/cache/pacman/pkg"
+        mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/var/lib/pacman"
+
+        # Mount the pacman cache directory to /cache (preserves /var/lib/pacman database)
+        # if i don't do this then you will see a error like this:-
+        # error: could not determine cachedir mount point /var/cache/pacman/pkg/download-N3AGPU
+        # error: failed to commit transaction (not enough free disk space)
+        if [ -d "/cache" ]; then
+            mkdir -p "/cache/chroot-pacman-cache/${distro_name}"
+            safe_mount "/cache/chroot-pacman-cache/${distro_name}" "${INSTALLED_ROOTFS_DIR}/${distro_name}/var/cache/pacman"
+        fi
+    fi
     # Mount Android storage directories
     safe_mount "/sdcard" "${INSTALLED_ROOTFS_DIR}/${distro_name}/sdcard"
 
@@ -1343,6 +1356,9 @@ command_unmount_system_points() {
     busybox umount "${rootfs}/dev/random" 2>/dev/null || true
     busybox umount "${rootfs}/dev/binderfs" 2>/dev/null || true
     busybox umount "${rootfs}/dev/shm" 2>/dev/null || true
+    if [ "$distro_name" = "archlinux" ]; then
+        busybox umount "${rootfs}/var/cache/pacman" 2>/dev/null || true
+    fi
 
     # Unmount /dev/pts before /dev
     busybox umount "${rootfs}/dev/pts" 2>/dev/null || true
