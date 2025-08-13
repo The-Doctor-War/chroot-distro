@@ -404,9 +404,24 @@ command_install() {
         # downloaded file from the complete. Useful in case if curl will
         # fail for some reason.
         msg
-        rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
-        if ! curl --disable --fail --retry 5 --retry-connrefused --retry-delay 5 --location \
-            --output "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp" "${TARBALL_URL}"; then
+        retry_count=0
+        max_retries=5
+        while [ $retry_count -le $max_retries ]; do
+            rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
+            if busybox wget -T 30 --no-check-certificate \
+                -O "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp" "${TARBALL_URL}"; then
+                break
+            fi
+
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -le $max_retries ]; then
+                echo "Download failed, retrying in 5 seconds... (attempt $retry_count/$max_retries)"
+                sleep 5
+            fi
+        done
+
+        # Check if all retries failed
+        if [ $retry_count -gt $max_retries ]; then
             msg
             msg "${BLUE}[${BRED}!${BLUE}] ${CYAN}Download failure, please check your network connection.${RST}"
             rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
@@ -414,6 +429,7 @@ command_install() {
             cleanup_failed_installation "$distro_name"
             return 1
         fi
+        unset retry_count max_retries
         msg
 
         # If curl finished successfully, rename file to original.
@@ -430,7 +446,7 @@ command_install() {
     busybox tar -C "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" \
         --strip-components="${TARBALL_STRIP_OPT}" \
         --exclude="dev" \
-        -xf "${DOWNLOAD_CACHE_DIR}/${tarball_name}" 2>&1 | grep -v "/linkerconfig/" >&2
+        -xf "${DOWNLOAD_CACHE_DIR}/${tarball_name}" 2>&1 | busybox grep -v "/linkerconfig/" >&2
 
     # If no /etc in rootfs, terminate installation.
     # This usually indicates that downloaded distribution tarball doesn't contain
@@ -1015,21 +1031,10 @@ command_clear_cache() {
     if [ "$cache_files_count" -eq 0 ]; then
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Download cache is empty.${RST}"
     else
-        # Get cache size before clearing (using busybox du for consistency)
-        size_of_cache=""
-        if command -v busybox >/dev/null 2>&1; then
-            size_of_cache=$(busybox du -sh "$DOWNLOAD_CACHE_DIR" 2>/dev/null | cut -f1)
-        elif command -v du >/dev/null 2>&1; then
-            # Try different du options that might work on toybox
-            size_of_cache=$(du -sh "$DOWNLOAD_CACHE_DIR" 2>/dev/null | cut -f1) ||
-                size_of_cache=$(du -h "$DOWNLOAD_CACHE_DIR" 2>/dev/null | tail -1 | cut -f1) ||
-                size_of_cache="unknown"
-        else
-            size_of_cache="unknown"
-        fi
+        # Get cache size before clearing using busybox du
+        size_of_cache=$(busybox du -sh "$DOWNLOAD_CACHE_DIR" 2>/dev/null | cut -f1)
 
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Clearing cache files...${RST}"
-
         # Find and delete files one by one for better error handling
         find "$DOWNLOAD_CACHE_DIR" -type f 2>/dev/null | while IFS= read -r filename; do
             if [ -n "$filename" ] && [ -f "$filename" ]; then
@@ -1038,7 +1043,7 @@ command_clear_cache() {
             fi
         done
 
-        if [ "$size_of_cache" != "unknown" ] && [ -n "$size_of_cache" ]; then
+        if [ -n "$size_of_cache" ]; then
             msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Reclaimed ${size_of_cache} of disk space.${RST}"
         else
             msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Cache files removed successfully.${RST}"
