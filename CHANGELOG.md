@@ -1,5 +1,8 @@
 # Changelog
 
+### v1.1.2
+- fix: fix wrong permission for /tmp
+
 ### v1.1.1 
 - fs: increase dev/shm size to 512M 
     - 256Mb is too low so some app might now run properly that's why i increase it to 512Mb
