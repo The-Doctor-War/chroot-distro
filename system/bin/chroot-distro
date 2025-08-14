@@ -754,6 +754,16 @@ command_login() {
         msg "${BRED}Error: no user '${YELLOW}${login_user}${BRED}' defined in /etc/passwd of distribution.${RST}"
         return 1
     fi
+    login_uid=$(grep "^${login_user}:" "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/passwd" | cut -d ':' -f 3)
+    if [ -z "${login_uid}" ]; then
+        msg "${BRED}Error: failed to retrieve the id of user '${YELLOW}${login_user}${BRED}' from /etc/passwd of distribution.${RST}"
+        return 1
+    fi
+    login_gid=$(grep "^${login_user}:" "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/passwd" | cut -d ':' -f 4)
+    if [ -z "${login_gid}" ]; then
+        msg "${BRED}Error: failed to retrieve the primary group id of user '${YELLOW}${login_user}${BRED}' from /etc/passwd of distribution.${RST}"
+        return 1
+    fi
     login_home=$(grep "^${login_user}:" "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/passwd" | cut -d ':' -f 6)
     if [ -z "$login_home" ]; then
         msg "${BRED}Error: failed to retrieve the home of user '${YELLOW}${login_user}${BRED}' from /etc/passwd of distribution.${RST}"
@@ -910,12 +920,16 @@ command_login() {
             USER="$login_user" \
             /bin/su "$login_user" -c "$exec_command"
     else
+        # Change ownership of the home directory BEFORE dropping privileges with `su`
+        if [ -d "${INSTALLED_ROOTFS_DIR}/${distro_name}${login_home}" ]; then
+            chown "$login_uid:$login_gid" "${INSTALLED_ROOTFS_DIR}/${distro_name}${login_home}"
+        fi
         # FIXIT: need to find some way to do this without creating a temporary script
         # Create a temporary script to handle directory change and shell execution
         temp_script_path="${INSTALLED_ROOTFS_DIR}/${distro_name}/tmp/login_script_$$"
         cat >"$temp_script_path" <<EOF
 #!/bin/sh
-cd "$login_wd" 2>/dev/null || cd "$login_home" 2>/dev/null || cd /
+cd "$login_wd" 2>/dev/null || cd "$login_home" 2>/dev/null || cd ~
 exec "$login_shell"
 EOF
         chmod +x "$temp_script_path"
