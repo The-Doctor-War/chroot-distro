@@ -228,6 +228,74 @@ get_distro_info() {
 
 #############################################################################
 #
+# FUNCTION TO CHECK IS IF ALL THE REQUIRED COMMANDS ARE AVAILABLE
+#
+#############################################################################
+
+check_all_required_commands() {
+    if ! command -v busybox >/dev/null 2>&1; then
+        msg "${BRED} ERROR: BusyBox not found please install busybox ndk first${RST}"
+        exit 1
+    fi
+    if ! busybox tar --help 2>&1 | busybox grep -q -- "-J"; then
+        msg "${BRED} ERROR: The installed Busybox 'tar' does not support xz compression.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox tar --help 2>&1 | busybox grep -q -- "-C"; then
+        msg "${BRED} ERROR: The installed Busybox 'tar' does not support -C argument${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox tar --help 2>&1 | busybox grep -q -- "--strip-components"; then
+        msg "${BRED} ERROR: The installed Busybox 'tar' does not support --strip-components argument${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox tar --help 2>&1 | busybox grep -q -- "--exclude"; then
+        msg "${BRED} ERROR: The installed Busybox 'tar' does not support --exclude argument${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox stat --help 2>&1 | busybox grep -q -- "-c.*FMT"; then
+        msg "${BRED} ERROR: The installed Busybox 'stat' does not support -c argument.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox wget --help 2>&1 | busybox grep -q -- "-T"; then
+        msg "${BRED} ERROR: The installed Busybox 'wget' does not support -T argument.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox wget --help 2>&1 | busybox grep -q -- "--no-check-certificate"; then
+        msg "${BRED} ERROR: The installed Busybox 'wget' does not support --no-check-certificate argument.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox id --help 2>&1 | busybox grep -q -- "-G"; then
+        msg "${BRED} ERROR: The installed Busybox 'id' does not support -G argument.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox id --help 2>&1 | busybox grep -q -- "-n"; then
+        msg "${BRED} ERROR: The installed Busybox 'id' does not support -n argument.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox id --help 2>&1 | busybox grep -q -- "-u"; then
+        msg "${BRED} ERROR: The installed Busybox 'id' does not support -u argument.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+    if ! busybox mktemp --help >/dev/null 2>&1; then
+        msg "${BRED} ERROR: The installed Busybox mktemp.${RST}"
+        msg "${YELLOW} Update to BusyBox 1.36.1 or higher"
+        exit 1
+    fi
+}
+
+#############################################################################
+#
 # FUNCTION TO CHECK IS BYSYBOX IS SUPPORTED
 #
 #############################################################################
@@ -238,6 +306,21 @@ chroot_distro_warn_if_unsupported_busybox() {
         msg "The installed BusyBox version ($current_version) is outdated and may cause compatibility issues."
         msg "Upgrade to BusyBox v1.36.1 or newer for optimal performance."
     fi
+}
+
+#############################################################################
+#
+# FUNCTION TO CHECK IS IF THE SCRIPT IS RUNNNING AS ROOT
+#
+#############################################################################
+
+check_if_running_as_root() {
+    user_id=$(busybox id -u)
+    if [ "${user_id}" -ne 0 ]; then
+        msg "${BRED}ERROE: This script requires root privileges. Please run it as root."
+        exit 1
+    fi
+    unset user_id
 }
 
 #############################################################################
@@ -526,20 +609,20 @@ command_install() {
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/gshadow" >/dev/null 2>&1 || true
 
     # Add current Android user to passwd
-    echo "aid_$(id -un):x:$(id -u):$(id -g):Android User:/:/sbin/nologin" >> \
+    echo "aid_$(busybox id -un):x:$(busybox id -u):$(busybox id -g):Android User:/:/sbin/nologin" >> \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/passwd"
 
     # Add shadow entry for Android user
-    echo "aid_$(id -un):*:18446:0:99999:7:::" >> \
+    echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/shadow"
 
     # Add Android group mappings using POSIX sh approach
-    group_names=$(id -Gn | tr ' ' '\n')
-    group_ids=$(id -G | tr ' ' '\n')
+    group_names=$(busybox id -Gn | tr ' ' '\n')
+    group_ids=$(busybox id -G | tr ' ' '\n')
 
     # Create temporary files to store the data
-    tmp_names=$(mktemp)
-    tmp_ids=$(mktemp)
+    tmp_names=$(busybox mktemp)
+    tmp_ids=$(busybox mktemp)
     echo "$group_names" >"$tmp_names"
     echo "$group_ids" >"$tmp_ids"
 
@@ -549,10 +632,10 @@ command_install() {
 
     while read -r group_name <&3 && read -r group_id <&4; do
         if [ -n "$group_name" ] && [ -n "$group_id" ]; then
-            echo "aid_${group_name}:x:${group_id}:root,aid_$(id -un)" \
+            echo "aid_${group_name}:x:${group_id}:root,aid_$(busybox id -un)" \
                 >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/group"
             if [ -f "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/gshadow" ]; then
-                echo "aid_${group_name}:*::root,aid_$(id -un)" \
+                echo "aid_${group_name}:*::root,aid_$(busybox id -un)" \
                     >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/gshadow"
             fi
         fi
@@ -1523,6 +1606,14 @@ show_version() {
     msg "${CYAN}Chroot-Distro v${PROGRAM_VERSION} by @sabamdarif.${RST}"
 }
 
+#############################################################################
+#
+# CALL THE FUNCTIONS BASED ON WHICH ARGUMENTS ARE GIVEN
+#
+#############################################################################
+
+check_if_running_as_root
+check_all_required_commands
 chroot_distro_warn_if_unsupported_busybox
 
 if [ $# -ge 1 ]; then
