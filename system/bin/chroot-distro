@@ -640,6 +640,44 @@ command_install() {
 	aid_video:x:1006:
 	aid_drm:x:1007:
 EOF
+
+    # get the gid fist from the current system, it it unable to fetch
+    # then it will use the generic value
+    # although generic will always be right but i just want to make sure
+    # it uses the values it get from the system
+    SYSTEM_GID=$(busybox id -g system 2>/dev/null)
+    [ -z "$SYSTEM_GID" ] && SYSTEM_GID=1000
+
+    SHELL_GID=$(busybox id -g shell 2>/dev/null)
+    [ -z "$SHELL_GID" ] && SHELL_GID=2000
+
+    INET_GID=$(busybox id -g inet 2>/dev/null)
+    [ -z "$INET_GID" ] && INET_GID=3003
+
+    EVERYBODY_GID=$(busybox id -g everybody 2>/dev/null)
+    [ -z "$EVERYBODY_GID" ] && EVERYBODY_GID=9997
+
+    MISC_GID=$(busybox id -g misc 2>/dev/null)
+    [ -z "$MISC_GID" ] && MISC_GID=9998
+
+    chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /bin/sh -c "
+    getent group system >/dev/null 2>&1 || {
+        groupadd -g $SYSTEM_GID system 2>/dev/null
+    }
+    getent group shell >/dev/null 2>&1 || {
+        groupadd -g $SHELL_GID shell 2>/dev/null
+    }
+    getent group inet >/dev/null 2>&1 || {
+        groupadd -g $INET_GID inet 2>/dev/null
+    }
+    getent group everybody >/dev/null 2>&1 || {
+        groupadd -g $EVERYBODY_GID everybody 2>/dev/null
+    }
+    getent group misc >/dev/null 2>&1 || {
+        groupadd -g $MISC_GID misc 2>/dev/null
+    }
+    "
+    unset SYSTEM_GID SHELL_GID INET_GID EVERYBODY_GID MISC_GID
     if chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /bin/id _apt >/dev/null 2>&1; then
         chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /sbin/usermod -g 3003 -G 3003,3004 -a _apt 2>/dev/null
     fi
@@ -873,10 +911,21 @@ command_login() {
     # Mount core file systems
     safe_mount "/dev" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev"
     safe_mount "/dev/binderfs" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/binderfs"
-    mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/shm" 2>/dev/null || true
-    busybox mount -t tmpfs -o size=512M tmpfs "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/shm" 2>/dev/null || {
-        msg "${YELLOW}Warning: failed to mount dev/shm filesystem${RST}"
-    }
+    if [ -d /dev/shm ]; then
+        safe_mount "/dev/shm" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/shm"
+    else
+        mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/shm" 2>/dev/null || true
+        busybox mount -t tmpfs -o size=512M,mode=1777 tmpfs "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/shm" 2>/dev/null || {
+            msg "${YELLOW}Warning: failed to mount dev/shm filesystem${RST}"
+        }
+    fi
+    current_perms=$(busybox stat -c "%a" "/dev/shm" 2>/dev/null)
+    if [ "$current_perms" != "1777" ]; then
+        chmod 1777 "/dev/shm" 2>/dev/null || {
+            msg "${YELLOW}Warning: could not set proper permissions on /dev/shm${RST}"
+        }
+    fi
+    unset current_perms
     # Mount sys filesystems
     safe_mount "/sys" "${INSTALLED_ROOTFS_DIR}/${distro_name}/sys"
     # Mount proc filesystems
@@ -884,7 +933,6 @@ command_login() {
     safe_mount "/dev/pts" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/pts"
     safe_mount "/dev/urandom" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/random"
     safe_mount "/dev/urandom" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/random"
-    safe_mount "/dev/shm" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/shm"
     safe_mount "/var/tmp" "${INSTALLED_ROOTFS_DIR}/${distro_name}/var/tmp"
 
     if [ "$distro_name" = "archlinux" ]; then
@@ -939,7 +987,7 @@ command_login() {
         fi
 
         safe_mount "${TERMUX_PREFIX}/tmp" "${INSTALLED_ROOTFS_DIR}/${distro_name}/tmp"
-        current_perms=$(busybox stat -c "%a" "${TERMUX_PREFIX}/tmp" 2>/dev/null || echo "000")
+        current_perms=$(busybox stat -c "%a" "${TERMUX_PREFIX}/tmp" 2>/dev/null)
         if [ "$current_perms" != "1777" ]; then
             chmod 1777 "${TERMUX_PREFIX}/tmp" 2>/dev/null || {
                 msg "${YELLOW}Warning: could not set proper permissions on ${TERMUX_PREFIX}/tmp${RST}"
@@ -950,7 +998,7 @@ command_login() {
             safe_mount "/tmp" "${INSTALLED_ROOTFS_DIR}/${distro_name}/tmp" 2>/dev/null || {
                 msg "${BRED}Error: failed to mount /tmp filesystem${RST}"
             }
-            current_perms=$(busybox stat -c "%a" "/tmp" 2>/dev/null || echo "000")
+            current_perms=$(busybox stat -c "%a" "/tmp" 2>/dev/null)
             if [ "$current_perms" != "1777" ]; then
                 chmod 1777 "/tmp" 2>/dev/null || {
                     msg "${YELLOW}Warning: could not set proper permissions on ${TERMUX_PREFIX}/tmp${RST}"
@@ -958,7 +1006,7 @@ command_login() {
             fi
         fi
     fi
-
+    unset current_perms
     # Bind custom file systems
     if [ -n "$custom_fs_bindings" ]; then
         # Use printf to handle the space-separated bindings properly
