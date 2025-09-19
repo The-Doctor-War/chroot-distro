@@ -570,6 +570,11 @@ command_install() {
         return 1
     fi
 
+    # Mount /dev immediately so :- cannot create /dev/null: Permission defined
+    # doesn't happened
+    mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
+    safe_mount "/dev" "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
+
     # Write important environment variables to /etc/environment.
     chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment" >/dev/null 2>&1 || true
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Writing file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment'...${RST}"
@@ -698,6 +703,10 @@ EOF
         chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /sbin/usermod -g 3003 -G 3003,3004 -a _apt 2>/dev/null
     fi
     chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /sbin/usermod -G 3003 -a root 2>/dev/null
+
+    # Unmount /dev or any other if any
+    busybox umount "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev" 2>/dev/null || true
+
     msg
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Installation completed successfully!${RST}"
     msg
