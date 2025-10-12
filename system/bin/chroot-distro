@@ -73,7 +73,7 @@ getopt() { busybox getopt "$@"; }
 #############################################################################
 
 msg() {
-    echo "$@" >&2
+    busybox echo -e "$@" >&2
 }
 
 #############################################################################
@@ -84,11 +84,11 @@ msg() {
 
 detect_cpu_arch() {
     case "$(uname -m)" in
-    aarch64 | arm64) echo "aarch64" ;;
-    armv7l | armv6l | arm) echo "arm" ;;
-    x86_64 | amd64) echo "x86_64" ;;
-    i386 | i686) echo "i386" ;;
-    *) echo "unknown" ;;
+    aarch64 | arm64) busybox echo "aarch64" ;;
+    armv7l | armv6l | arm) busybox echo "arm" ;;
+    x86_64 | amd64) busybox echo "x86_64" ;;
+    i386 | i686) busybox echo "i386" ;;
+    *) busybox echo "unknown" ;;
     esac
 }
 
@@ -108,81 +108,49 @@ set_right_permission() {
     path="$1"
 
     case "$path" in
-    "/dev")
-        chmod 755 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+    "/dev" | "/dev/pts" | "/dev/binderfs" | "/dev/shm")
+        busybox chmod 755 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
-    "/dev/pts")
-        chmod 755 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+    "/dev/null" | "/dev/zero")
+        busybox chmod 666 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
-    "/dev/binderfs")
-        chmod 755 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+    "/dev/urandom" | "/dev/random")
+        busybox chmod 644 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
-    "/dev/shm")
-        chmod 755 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/dev/null")
-        chmod 666 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/dev/zero")
-        chmod 666 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/dev/urandom")
-        chmod 644 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/dev/random")
-        chmod 644 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/proc")
-        chmod 555 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/sys")
-        chmod 555 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+    "/proc" | "/sys")
+        busybox chmod 555 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
     "/data")
-        chmod 771 "$path" 2>/dev/null || true
-        chown system:system "$path" 2>/dev/null || true
+        busybox chmod 771 "$path" 2>/dev/null || true
+        busybox chown system:system "$path" 2>/dev/null || true
         ;;
     "/sdcard")
-        chmod 644 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+        busybox chmod 644 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
     "/storage")
-        chmod 710 "$path" 2>/dev/null || true
-        chown shell:everybody "$path" 2>/dev/null || true
+        busybox chmod 710 "$path" 2>/dev/null || true
+        busybox chown shell:everybody "$path" 2>/dev/null || true
         ;;
     "/storage/emulated")
-        chmod 550 "$path" 2>/dev/null || true
-        chown media_rw:media_rw "$path" 2>/dev/null || true
+        busybox chmod 550 "$path" 2>/dev/null || true
+        busybox chown media_rw:media_rw "$path" 2>/dev/null || true
         ;;
     "/tmp")
-        chmod 771 "$path" 2>/dev/null || true
-        chown shell:shell "$path" 2>/dev/null || true
+        busybox chmod 771 "$path" 2>/dev/null || true
+        busybox chown shell:shell "$path" 2>/dev/null || true
         ;;
     "/proc/self/fd")
-        chmod 555 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+        busybox chmod 555 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
-    "/proc/self/fd/0")
-        chmod 777 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/proc/self/fd/1")
-        chmod 777 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
-        ;;
-    "/proc/self/fd/2")
-        chmod 777 "$path" 2>/dev/null || true
-        chown root:root "$path" 2>/dev/null || true
+    "/proc/self/fd/0" | "/proc/self/fd/1" | "/proc/self/fd/2")
+        busybox chmod 777 "$path" 2>/dev/null || true
+        busybox chown root:root "$path" 2>/dev/null || true
         ;;
     esac
 }
@@ -192,7 +160,7 @@ safe_mount() {
     src="$1"
     dst="$2"
     if [ -e "$src" ]; then
-        mkdir -p "$dst" 2>/dev/null || true
+        busybox mkdir -p "$dst" 2>/dev/null || true
         set_right_permission "$src"
         busybox mount --bind "$src" "$dst" 2>/dev/null || {
             msg "${YELLOW}Warning: failed to mount $src to $dst${RST}"
@@ -214,41 +182,41 @@ get_distro_info() {
     case "$distro_name" in
     "archlinux")
         case "$info_type" in
-        "supported_arch") echo "aarch64 arm" ;;
-        "aarch64_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/archlinux-latest-aarch64.tar.xz" ;;
-        "arm_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/archlinux-latest-arm.tar.xz" ;;
+        "supported_arch") busybox echo "aarch64 arm" ;;
+        "aarch64_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/archlinux-latest-aarch64.tar.xz" ;;
+        "arm_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/archlinux-latest-arm.tar.xz" ;;
         esac
         ;;
     "debian")
         case "$info_type" in
-        "supported_arch") echo "aarch64 arm" ;;
-        "aarch64_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/debian-latest-aarch64.tar.xz" ;;
-        "arm_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/debian-latest-arm.tar.xz" ;;
+        "supported_arch") busybox echo "aarch64 arm" ;;
+        "aarch64_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/debian-latest-aarch64.tar.xz" ;;
+        "arm_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/debian-latest-arm.tar.xz" ;;
         esac
         ;;
     "fedora")
         case "$info_type" in
-        "supported_arch") echo "aarch64" ;;
-        "aarch64_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/fedora-latest-aarch64.tar.xz" ;;
-        "arm_url") echo "" ;; # Not supported
+        "supported_arch") busybox echo "aarch64" ;;
+        "aarch64_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/fedora-latest-aarch64.tar.xz" ;;
+        "arm_url") busybox echo "" ;; # Not supported
         esac
         ;;
     "ubuntu")
         case "$info_type" in
-        "supported_arch") echo "aarch64 arm" ;;
-        "aarch64_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/ubuntu-latest-aarch64.tar.xz" ;;
-        "arm_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/ubuntu-latest-arm.tar.xz" ;;
+        "supported_arch") busybox echo "aarch64 arm" ;;
+        "aarch64_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/ubuntu-latest-aarch64.tar.xz" ;;
+        "arm_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/ubuntu-latest-arm.tar.xz" ;;
         esac
         ;;
     "kali")
         case "$info_type" in
-        "supported_arch") echo "aarch64 arm" ;;
-        "aarch64_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/kali-latest-aarch64.tar.xz" ;;
-        "arm_url") echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/kali-latest-arm.tar.xz" ;;
+        "supported_arch") busybox echo "aarch64 arm" ;;
+        "aarch64_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/kali-latest-aarch64.tar.xz" ;;
+        "arm_url") busybox echo "https://github.com/sabamdarif/chroot-distro/releases/download/distro/kali-latest-arm.tar.xz" ;;
         esac
         ;;
     *)
-        echo ""
+        busybox echo ""
         ;;
     esac
 }
@@ -328,7 +296,7 @@ check_all_required_commands() {
 #############################################################################
 
 chroot_distro_warn_if_unsupported_busybox() {
-    current_version=$(busybox | sed -n 's/.* v\([0-9.]*\).*/\1/p' | tr -d '.')
+    current_version=$(busybox | busybox sed -n 's/.* v\([0-9.]*\).*/\1/p' | busybox tr -d '.')
     if [ "$current_version" -lt 1361 ]; then
         msg "The installed BusyBox version ($current_version) is outdated and may cause compatibility issues."
         msg "Upgrade to BusyBox v1.36.1 or newer for optimal performance."
@@ -361,7 +329,7 @@ cleanup_failed_installation() {
     distro_name="$1"
     if [ -n "$distro_name" ] && [ -d "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" ]; then
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Cleaning up failed installation...${RST}"
-        rm -rf "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"
+        busybox rm -rf "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"
     fi
 }
 
@@ -491,17 +459,17 @@ command_install() {
         else
             # Directory exists but installation is incomplete/failed - clean it up
             msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Removing incomplete installation directory...${RST}"
-            rm -rf "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"
+            busybox rm -rf "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"
         fi
     fi
 
     # Create installation directory
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Creating installation directory...${RST}"
-    mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"
+    busybox mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"
 
     if [ ! -d "$DOWNLOAD_CACHE_DIR" ]; then
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Creating directory '$DOWNLOAD_CACHE_DIR'...${RST}"
-        mkdir -p "$DOWNLOAD_CACHE_DIR"
+        busybox mkdir -p "$DOWNLOAD_CACHE_DIR"
     fi
 
     tarball_name=$(basename "${TARBALL_URL}")
@@ -517,7 +485,7 @@ command_install() {
         retry_count=0
         max_retries=5
         while [ $retry_count -le $max_retries ]; do
-            rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
+            busybox rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
             if busybox wget -T 30 --no-check-certificate \
                 -O "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp" "${TARBALL_URL}"; then
                 break
@@ -534,7 +502,7 @@ command_install() {
         if [ $retry_count -gt $max_retries ]; then
             msg
             msg "${BLUE}[${BRED}!${BLUE}] ${CYAN}Download failure, please check your network connection.${RST}"
-            rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
+            busybox rm -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp"
             # Clean up the installation directory on failure
             cleanup_failed_installation "$distro_name"
             return 1
@@ -543,7 +511,7 @@ command_install() {
         msg
 
         # If curl finished successfully, rename file to original.
-        mv -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp" "${DOWNLOAD_CACHE_DIR}/${tarball_name}"
+        busybox mv -f "${DOWNLOAD_CACHE_DIR}/${tarball_name}.tmp" "${DOWNLOAD_CACHE_DIR}/${tarball_name}"
     else
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Using cached rootfs tarball...${RST}"
     fi
@@ -572,12 +540,12 @@ command_install() {
 
     # Mount /dev immediately so :- cannot create /dev/null: Permission defined
     # doesn't happened
-    mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
+    busybox mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
     safe_mount "/dev" "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
 
     # Write important environment variables to /etc/environment.
-    chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment" >/dev/null 2>&1 || true
-    msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Writing file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment'...${RST}"
+    busybox chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment" >/dev/null 2>&1 || true
+    busybox msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Writing file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment'...${RST}"
     for var in ANDROID_ART_ROOT ANDROID_DATA ANDROID_I18N_ROOT ANDROID_ROOT \
         ANDROID_RUNTIME_ROOT ANDROID_TZDATA_ROOT BOOTCLASSPATH COLORTERM \
         DEX2OATBOOTCLASSPATH EXTERNAL_STORAGE; do
@@ -591,7 +559,7 @@ command_install() {
     # Don't touch these variables.
     # TERM is being inherited from currect environment. Otherwise it is being
     # set to xterm-256color (Termux app default).
-    cat <<-EOF >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment"
+    busybox cat <<-EOF >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment"
 		LANG=en_US.UTF-8
 		MOZ_FAKE_NO_SANDBOX=1
 		PATH=${DEFAULT_PATH_ENV}
@@ -604,15 +572,15 @@ command_install() {
     for f in /etc/bash.bashrc /etc/profile /etc/login.defs; do
         [ ! -e "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}${f}" ] && continue
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Updating PATH in '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}${f}' if needed...${RST}"
-        sed -i -E "s@\<(PATH=)(\"?[^\"[:space:]]+(\"|\$|\>))@\1\"${DEFAULT_PATH_ENV}\"@g" \
+        busybox sed -i -E "s@\<(PATH=)(\"?[^\"[:space:]]+(\"|\$|\>))@\1\"${DEFAULT_PATH_ENV}\"@g" \
             "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}${f}"
     done
     unset f
 
     # Default /etc/resolv.conf may be empty or unsuitable for use.
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Creating file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf'...${RST}"
-    rm -f "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf"
-    cat <<-EOF >"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf"
+    busybox rm -f "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf"
+    busybox cat <<-EOF >"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf"
 		nameserver ${DEFAULT_PRIMARY_NAMESERVER}
 		nameserver ${DEFAULT_SECONDARY_NAMESERVER}
 		EOF
@@ -620,7 +588,7 @@ command_install() {
     # Default /etc/hosts may be empty or incomplete.
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Creating file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/hosts'...${RST}"
     chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/hosts" >/dev/null 2>&1 || true
-    cat <<-EOF >"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/hosts"
+    busybox cat <<-EOF >"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/hosts"
 		# IPv4.
 		127.0.0.1   localhost.localdomain localhost
 
@@ -635,24 +603,24 @@ command_install() {
 
     # Add Android-specific UIDs/GIDs to /etc/group and /etc/gshadow.
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Registering Android-specific UIDs and GIDs...${RST}"
-    chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/passwd" \
+    busybox chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/passwd" \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/shadow" \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/group" \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/gshadow" >/dev/null 2>&1 || true
 
     # Add current Android user to passwd
-    echo "aid_$(busybox id -un):x:$(busybox id -u):$(busybox id -g):Android User:/:/sbin/nologin" >> \
+    busybox echo "aid_$(busybox id -un):x:$(busybox id -u):$(busybox id -g):Android User:/:/sbin/nologin" >> \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/passwd"
 
     # Add shadow entry for Android user
-    echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
+    busybox echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/shadow"
 
     # Add shadow entry for Android user
-    echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
+    busybox echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/shadow"
 
-    cat <<-EOF >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/group"
+    busybox cat <<-EOF >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/group"
 	aid_inet:x:3003:
 	aid_net_raw:x:3004:
 	aid_graphics:x:1003:
@@ -987,7 +955,7 @@ command_login() {
         # error: could not determine cachedir mount point /var/cache/pacman/pkg/download-N3AGPU
         # error: failed to commit transaction (not enough free disk space)
         if [ -d "/cache" ]; then
-            mkdir -p "/cache/chroot-pacman-cache/"
+            busybox mkdir -p "/cache/chroot-pacman-cache/"
             safe_mount "/cache/chroot-pacman-cache/" "${INSTALLED_ROOTFS_DIR}/${distro_name}/var/cache/pacman"
         fi
     fi
@@ -1031,7 +999,7 @@ command_login() {
         fi
 
         safe_mount "${TERMUX_PREFIX}/tmp" "${INSTALLED_ROOTFS_DIR}/${distro_name}/tmp"
-        chmod 1777 "${TERMUX_PREFIX}/tmp" 2>/dev/null || {
+        busybox chmod 1777 "${TERMUX_PREFIX}/tmp" 2>/dev/null || {
             msg "${YELLOW}Warning: could not set proper permissions on ${TERMUX_PREFIX}/tmp${RST}"
         }
     else
@@ -1039,7 +1007,7 @@ command_login() {
             safe_mount "/tmp" "${INSTALLED_ROOTFS_DIR}/${distro_name}/tmp" 2>/dev/null || {
                 msg "${BRED}Error: failed to mount /tmp filesystem${RST}"
             }
-            chmod 1777 "/tmp" 2>/dev/null || {
+            busybox chmod 1777 "/tmp" 2>/dev/null || {
                 msg "${YELLOW}Warning: could not set proper permissions on /tmp${RST}"
             }
         fi
@@ -1214,7 +1182,7 @@ command_clear_cache() {
     fi
 
     # Check if cache has any files
-    cache_files_count=$(find "$DOWNLOAD_CACHE_DIR" -type f 2>/dev/null | wc -l)
+    cache_files_count=$(busybox find "$DOWNLOAD_CACHE_DIR" -type f 2>/dev/null | wc -l)
     if [ "$cache_files_count" -eq 0 ]; then
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Download cache is empty.${RST}"
     else
@@ -1223,10 +1191,10 @@ command_clear_cache() {
 
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Clearing cache files...${RST}"
         # Find and delete files one by one for better error handling
-        find "$DOWNLOAD_CACHE_DIR" -type f 2>/dev/null | while IFS= read -r filename; do
+        busybox find "$DOWNLOAD_CACHE_DIR" -type f 2>/dev/null | while IFS= read -r filename; do
             if [ -n "$filename" ] && [ -f "$filename" ]; then
                 msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Deleting '$(basename "$filename")'${RST}"
-                rm -f "$filename"
+                busybox rm -f "$filename"
             fi
         done
 
@@ -1359,7 +1327,7 @@ command_remove() {
 
     # Remove the rootfs directory
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Removing rootfs directory...${RST}"
-    if rm -rf "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"; then
+    if busybox rm -rf "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}"; then
         msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Finished.${RST}"
     else
         msg "${BLUE}[${BRED}!${BLUE}] ${CYAN}Finished with errors. Some files probably were not deleted.${RST}"
@@ -1540,7 +1508,7 @@ command_unmount_system_points() {
                 msg "${YELLOW} You might faced issue login in Termux${RST}"
             fi
         fi
-        chown -R "${ORIGINAL_UID:?}":"${ORIGINAL_GID:?}" ${TERMUX_HOME:?}
+        busybox chown -R "${ORIGINAL_UID:?}":"${ORIGINAL_GID:?}" ${TERMUX_HOME:?}
         unset ORIGINAL_UID ORIGINAL_GID PM_OUTPUT PM_UID
     fi
     # Unmount /data
