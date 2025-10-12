@@ -11,6 +11,7 @@
 ---
 
 > [!WARNING]
+>
 > - Root access is required
 > - Back up important files before use
 
@@ -21,7 +22,7 @@
 - Rooted Android Device
 - Install the [latest BusyBox for Android NDK by osm0sis](https://github.com/osm0sis/android-busybox-ndk) as a [Magisk module](https://github.com/Magisk-Modules-Repo/busybox-ndk) (**Recommended:** v1.36.1)
 
-> [!TIP] 
+> [!TIP]
 > If you use KernelSU then there's no need to flash the busybox-ndk module, it already has builtin busybox support
 
 ---
@@ -46,7 +47,7 @@ chroot-distro list
 # Install a distribution
 chroot-distro install debian
 
-# Login to the distribution  
+# Login to the distribution
 chroot-distro login debian
 ```
 
@@ -54,16 +55,16 @@ chroot-distro login debian
 
 ## Command Reference
 
-| Command | Aliases | Description |
-|---------|---------|-------------|
-| `help` | `--help`, `-h`, `he`, `hel` | Display help information |
-| `version` | `--version`, `-v` | Show version information |
-| `list` | `li`, `ls` | List available distributions |
-| `install` | `i`, `in`, `ins`, `add` | Install a distribution |
-| `login` | `sh` | Enter distribution shell |
-| `remove` | `rm` | Remove a distribution |
-| `unmount` | `umount`, `um` | Unmount distribution |
-| `clear-cache` | `clear`, `cl` | Clear downloaded files |
+| Command       | Aliases                     | Description                  |
+| ------------- | --------------------------- | ---------------------------- |
+| `help`        | `--help`, `-h`, `he`, `hel` | Display help information     |
+| `version`     | `--version`, `-v`           | Show version information     |
+| `list`        | `li`, `ls`                  | List available distributions |
+| `install`     | `i`, `in`, `ins`, `add`     | Install a distribution       |
+| `login`       | `sh`                        | Enter distribution shell     |
+| `remove`      | `rm`                        | Remove a distribution        |
+| `unmount`     | `umount`, `um`              | Unmount distribution         |
+| `clear-cache` | `clear`, `cl`               | Clear downloaded files       |
 
 ---
 
@@ -135,7 +136,6 @@ chroot-distro unmount debian
 
 ```bash
 chroot-distro unmount debian
-chroot-distro unmount --force debian
 ```
 
 ### `remove <distro>`
@@ -164,11 +164,13 @@ chroot-distro clear-cache
 To simplify usage from Termux, create a wrapper script:
 
 1. Open Termux and run:
+
 ```bash
 nano $PREFIX/bin/chroot-distro
 ```
 
 2. Paste the following content:
+
 ```bash
 #!/data/data/com.termux/files/usr/bin/bash
 
@@ -182,6 +184,7 @@ su -c "/system/bin/chroot-distro $args"
 ```
 
 3. Make the script executable:
+
 ```bash
 chmod +x $PREFIX/bin/chroot-distro
 ```
@@ -195,13 +198,14 @@ chmod +x $PREFIX/bin/chroot-distro
 If you find this project helpful and would like to support its development, consider buying me a coffee! Your support helps maintain and improve this project.
 
 **Cryptocurrency Donations:**
+
 - **USDT (BEP20,ERC20):** `0x1d216cf986d95491a479ffe5415dff18dded7e71`
-- **USDT (TRC20):** `TCjRKPLG4BgNdHibt2yeAwgaBZVB4JoPaD`  
+- **USDT (TRC20):** `TCjRKPLG4BgNdHibt2yeAwgaBZVB4JoPaD`
 - **BTC:** `13Q7xf3qZ9xH81rS2gev8N4vD92L9wYiKH`
 - **DOGE:** `DJkMCnBAFG14TV3BqZKmbbjD8Pi1zKLLG6`
 - **ETH:** `0x1d216cf986d95491a479ffe5415dff18dded7e71`
 
-*Every contribution, no matter how small, helps keep this project alive and growing! ❤️*
+_Every contribution, no matter how small, helps keep this project alive and growing! ❤️_
 
 ---
 
@@ -212,6 +216,7 @@ This project is licensed under the [GNU General Public License v3.0](https://cho
 ## Acknowledgments
 
 This project builds upon the work of:
+
 - [proot-distro](https://github.com/termux/proot-distro)
 - [Magisk-Modules-Alt-Repo/chroot-distro](https://github.com/Magisk-Modules-Alt-Repo/chroot-distro)
 
