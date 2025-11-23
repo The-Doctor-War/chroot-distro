@@ -754,7 +754,21 @@ command_install() {
 
     # Add usermod for _apt only if the distro is Debian-based
     if chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/id _apt >/dev/null 2>&1; then
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -g 3003 -G 3003,3004 -a _apt 2>/dev/null
+        if chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/id _apt >/dev/null 2>&1; then
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/sbin/usermod -a -g 3003 -G 3003,3004 _apt 2>/dev/null
+
+            # Create directories
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/lib/apt/lists/partial 2>/dev/null
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/cache/apt/archives/partial 2>/dev/null
+
+            # Fix ownership
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:3003 /var/lib/apt 2>/dev/null
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:3003 /var/cache/apt 2>/dev/null
+
+            # Fix permissions
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/lib/apt 2>/dev/null
+            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/cache/apt 2>/dev/null
+        fi
     fi
     chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -G 3003 -a root 2>/dev/null
 
