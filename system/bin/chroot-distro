@@ -67,6 +67,9 @@ BUSYBOXPATH="$(command -v busybox 2>/dev/null)"
 # variables to store distro information
 SUPPORTED_DISTRIBUTIONS="archlinux debian fedora ubuntu ubuntu-lts kali"
 
+# Mount point tracking file
+MOUNT_TRACKER_FILE="${RUNTIME_DIR}/mount.points"
+
 # ensure that the expected version of busybox is used
 busybox() { "$BUSYBOXPATH" "$@"; }
 
@@ -164,7 +167,7 @@ set_right_permission() {
     esac
 }
 
-# Function to safely mount with error handling
+# Function to safely mount with error handling and tracking
 # check if already mounted before attempting mount
 safe_mount() {
     src="$1"
@@ -183,6 +186,8 @@ safe_mount() {
             msg "${YELLOW}Warning: failed to mount $src to $dst${RST}"
             return 1
         }
+        # Track successful mount
+        busybox echo "$dst" >>"$MOUNT_TRACKER_FILE"
     fi
 }
 
@@ -458,6 +463,25 @@ run_chroot_cmd() {
     return $chroot_run_exit_code
 }
 
+# Cleanup all tracked mount points in reverse order
+cleanup_all_mounts() {
+    if [ ! -f "$MOUNT_TRACKER_FILE" ]; then
+        return 0
+    fi
+
+    msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Cleaning up mount points...${RST}"
+
+    # Unmount in reverse order
+    busybox tac "$MOUNT_TRACKER_FILE" | while IFS= read -r mount_point; do
+        if busybox mount | busybox grep -q " on $mount_point "; then
+            busybox umount "$mount_point" 2>/dev/null ||
+                busybox umount -l "$mount_point" 2>/dev/null || true
+        fi
+    done
+
+    busybox rm -f "$MOUNT_TRACKER_FILE"
+}
+
 #############################################################################
 #
 # FUNCTION TO INSTALL THE SPECIFIED DISTRIBUTION
@@ -717,13 +741,22 @@ command_install() {
     done
     unset f
 
-    # Default /etc/resolv.conf may be empty or unsuitable for use.
-    msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Creating file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf'...${RST}"
-    busybox rm -f "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf"
-    busybox cat <<-EOF >"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/resolv.conf"
-		nameserver ${DEFAULT_PRIMARY_NAMESERVER}
-		nameserver ${DEFAULT_SECONDARY_NAMESERVER}
-		EOF
+    # Enhanced network configuration with dynamic DNS
+    msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Configuring network and DNS...${RST}"
+
+    # Get DNS from Android properties
+    dns_servers=""
+    for i in 1 2 3 4; do
+        dns=$(getprop net.dns${i} 2>/dev/null)
+        [ -n "$dns" ] && dns_servers="${dns_servers}nameserver ${dns}\n"
+    done
+    # Fallback to Google DNS if no Android DNS found
+    [ -z "$dns_servers" ] && dns_servers="nameserver ${DEFAULT_PRIMARY_NAMESERVER}\nnameserver ${DEFAULT_SECONDARY_NAMESERVER}\n"
+
+    # Setup /run/resolvconf directory and DNS
+    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/mkdir -p /run/resolvconf 2>/dev/null || true
+    busybox printf "$dns_servers" >"${INSTALLED_ROOTFS_DIR}/${distro_name}/run/resolvconf/resolv.conf"
+    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/ln -sf /run/resolvconf/resolv.conf /etc/resolv.conf 2>/dev/null || true
 
     # Default /etc/hosts may be empty or incomplete.
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Creating file '${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/hosts'...${RST}"
@@ -756,40 +789,58 @@ command_install() {
     busybox echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
         "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/shadow"
 
-    # Add shadow entry for Android user
-    busybox echo "aid_$(busybox id -un):*:18446:0:99999:7:::" >> \
-        "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/shadow"
+    # Ensure Android network groups exist in /etc/group
+    busybox grep -q '^aid_inet:' "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/group" ||
+        busybox echo 'aid_inet:x:3003:' >>"${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/group"
+    busybox grep -q '^aid_net_raw:' "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/group" ||
+        busybox echo 'aid_net_raw:x:3004:' >>"${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/group"
 
-    busybox cat <<-EOF >"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/group"
-        root:x:0:
-		aid_inet:x:3003:
-        aid_net_raw:x:3004:
-        aid_graphics:x:1003:
-        aid_input:x:1004:
-        aid_audio:x:1005:
-        aid_video:x:1006:
-        aid_drm:x:1007:
+    # Add other Android groups
+    busybox cat <<-EOF >>"${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/group"
+		aid_graphics:x:1003:
+		aid_input:x:1004:
+		aid_audio:x:1005:
+		aid_video:x:1006:
+		aid_drm:x:1007:
 		EOF
 
-    # Add usermod for _apt only if the distro is Debian-based
+    # Fix root user - add to network groups
+    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -a -G aid_inet,aid_net_raw root 2>/dev/null || true
+
+    # Fix _apt user if exists (Debian-based distributions)
     if chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/id _apt >/dev/null 2>&1; then
-        if chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/id _apt >/dev/null 2>&1; then
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/sbin/usermod -a -g 3003 -G 3003,3004 _apt 2>/dev/null
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/sbin/usermod -a -G aid_inet,aid_net_raw _apt 2>/dev/null || true
 
-            # Create directories
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/lib/apt/lists/partial 2>/dev/null
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/cache/apt/archives/partial 2>/dev/null
+        # Create directories
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/lib/apt/lists/partial 2>/dev/null || true
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/cache/apt/archives/partial 2>/dev/null || true
 
-            # Fix ownership
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:3003 /var/lib/apt 2>/dev/null
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:3003 /var/cache/apt 2>/dev/null
+        # Fix ownership
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:aid_inet /var/lib/apt 2>/dev/null || true
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:aid_inet /var/cache/apt 2>/dev/null || true
 
-            # Fix permissions
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/lib/apt 2>/dev/null
-            chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/cache/apt 2>/dev/null
-        fi
+        #  Fix permissions
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/lib/apt 2>/dev/null || true
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/cache/apt 2>/dev/null || true
     fi
-    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -G 3003 -a root 2>/dev/null
+
+    # Fix ALL regular users (UID >= 1000, UID < 65534)
+    msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Configuring network access for all users...${RST}"
+    for user in $(busybox awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/passwd"); do
+        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -a -G aid_inet,aid_net_raw "$user" 2>/dev/null || true
+    done
+
+    # Set ping capability
+    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/sh -c \
+        'command -v setcap >/dev/null 2>&1 && setcap cap_net_raw+ep /bin/ping 2>/dev/null || true'
+
+    # Configure adduser for future users (Debian-based systems)
+    if [ -f "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/adduser.conf" ]; then
+        busybox sed -i '/^EXTRA_GROUPS=/d' "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/adduser.conf" 2>/dev/null
+        busybox sed -i '/^ADD_EXTRA_GROUPS=/d' "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/adduser.conf" 2>/dev/null
+        busybox echo 'ADD_EXTRA_GROUPS=1' >>"${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/adduser.conf"
+        busybox echo 'EXTRA_GROUPS="aid_inet aid_net_raw"' >>"${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/adduser.conf"
+    fi
 
     # get the gid fist from the current system, it it unable to fetch
     # then it will use the generic value
@@ -812,26 +863,22 @@ command_install() {
 
     chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /bin/sh -c "
     getent group system >/dev/null 2>&1 || {
-        groupadd -g $SYSTEM_GID system 2>/dev/null
+        groupadd -g $SYSTEM_GID system 2>/dev/null || true
     }
     getent group shell >/dev/null 2>&1 || {
-        groupadd -g $SHELL_GID shell 2>/dev/null
+        groupadd -g $SHELL_GID shell 2>/dev/null || true
     }
     getent group inet >/dev/null 2>&1 || {
-        groupadd -g $INET_GID inet 2>/dev/null
+        groupadd -g $INET_GID inet 2>/dev/null || true
     }
     getent group everybody >/dev/null 2>&1 || {
-        groupadd -g $EVERYBODY_GID everybody 2>/dev/null
+        groupadd -g $EVERYBODY_GID everybody 2>/dev/null || true
     }
     getent group misc >/dev/null 2>&1 || {
-        groupadd -g $MISC_GID misc 2>/dev/null
+        groupadd -g $MISC_GID misc 2>/dev/null || true
     }
     "
     unset SYSTEM_GID SHELL_GID INET_GID EVERYBODY_GID MISC_GID
-    if chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /bin/id _apt >/dev/null 2>&1; then
-        chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /sbin/usermod -g 3003 -G 3003,3004 -a _apt 2>/dev/null
-    fi
-    chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /sbin/usermod -G 3003 -a root 2>/dev/null
 
     # Unmount /dev or any other if any
     busybox umount "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev" 2>/dev/null || true
@@ -874,6 +921,12 @@ command_install() {
             }
             distro_setup
         )
+    fi
+
+    # Host-level ping fix
+    if [ -w /proc/sys/net/ipv4/ping_group_range ]; then
+        busybox echo '0 2147483647' >/proc/sys/net/ipv4/ping_group_range 2>/dev/null
+        msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Configured host-level ping permissions${RST}"
     fi
 
     msg
@@ -1120,6 +1173,9 @@ command_login() {
     mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/proc"
     mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/sys"
 
+    # Initialize mount tracker
+    busybox rm -f "$MOUNT_TRACKER_FILE"
+
     # Mount core file systems
     safe_mount "/dev" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev"
     safe_mount "/dev/binderfs" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/binderfs"
@@ -1149,6 +1205,14 @@ command_login() {
     safe_mount "/var/tmp" "${INSTALLED_ROOTFS_DIR}/${distro_name}/var/tmp"
 
     safe_mount "/data/dalvik-cache" "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/dalvik-cache"
+
+    # Mount Android-specific directories
+    if [ -d "/config" ]; then
+        safe_mount "/config" "${INSTALLED_ROOTFS_DIR}/${distro_name}/config"
+    fi
+    if [ -d "/dev/bus/usb" ]; then
+        safe_mount "/dev/bus/usb" "${INSTALLED_ROOTFS_DIR}/${distro_name}/dev/bus/usb"
+    fi
 
     # Mount /apex modules
     if [ -d "/apex" ]; then
@@ -1524,7 +1588,7 @@ command_remove() {
 
     # Try to unmount the rootfs before removal
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting system points...${RST}"
-    command_unmount_system_points "${distro_name}"
+    command_unmount "${distro_name}"
 
     # Attempt to restore permissions so directory can be removed without issues.
     # Use busybox chmod if available for better compatibility
@@ -1664,10 +1728,19 @@ command_unmount() {
         return 1
     fi
 
-    # Perform unmounting
+    # Use tracked mount cleanup for safe unmounting
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting system points for ${distro_name}...${RST}"
-    command_unmount_system_points "$distro_name"
 
+    if [ -f "$MOUNT_TRACKER_FILE" ]; then
+        cleanup_all_mounts
+    else
+        msg "${BLUE}[${GREEN}*${BLUE}] ${YELLOW}No tracked mount points found, attempting legacy cleanup...${RST}"
+        command_unmount_system_points "$distro_name"
+    fi
+    if busybox grep -q " ${rootfs}" /proc/mounts 2>/dev/null; then
+        msg "${BLUE}[${GREEN}*${BLUE}] ${YELLOW}Still some mount points found, attempting force cleanup...${RST}"
+        command_unmount_system_points_force "$distro_name"
+    fi
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting completed.${RST}"
 }
 
@@ -1764,9 +1837,6 @@ command_unmount_system_points() {
     busybox umount "${rootfs:?}/sys" 2>/dev/null || true
     busybox umount "${rootfs:?}/proc" 2>/dev/null || true
     busybox umount "${rootfs:?}/dev" 2>/dev/null || true
-    if grep -q " ${rootfs}" /proc/mounts 2>/dev/null; then
-        command_unmount_system_points_force "$distro_name"
-    fi
 }
 
 command_unmount_system_points_force() {
@@ -1784,8 +1854,8 @@ command_unmount_system_points_force() {
     fi
 
     # Find all mount points under rootfs and unmount in reverse order
-    grep " ${rootfs}" /proc/mounts 2>/dev/null |
-        awk '{print $2}' |
+    busybox grep " ${rootfs}" /proc/mounts 2>/dev/null |
+        busybox awk '{print $2}' |
         sort -r |
         while IFS= read -r mount_point; do
             busybox umount "$mount_point" 2>/dev/null ||
