@@ -780,12 +780,20 @@ command_install() {
         dns=$(getprop net.dns${i} 2>/dev/null)
         [ -n "$dns" ] && dns_servers="${dns_servers}nameserver ${dns}\n"
     done
-    # Fallback to Google DNS if no Android DNS found
-    [ -z "$dns_servers" ] && dns_servers="nameserver ${DEFAULT_PRIMARY_NAMESERVER}\nnameserver ${DEFAULT_SECONDARY_NAMESERVER}\n"
 
     # Setup /run/resolvconf directory and DNS
-    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/mkdir -p /run/resolvconf 2>/dev/null || true
-    busybox printf "$dns_servers" >"${INSTALLED_ROOTFS_DIR}/${distro_name}/run/resolvconf/resolv.conf"
+    busybox mkdir -p "${INSTALLED_ROOTFS_DIR}/${distro_name}/run/resolvconf" 2>/dev/null || true
+
+    # Fallback to Google DNS if no Android DNS found
+    if [ -z "$dns_servers" ]; then
+        busybox cat <<-EOF >"${INSTALLED_ROOTFS_DIR}/${distro_name}/run/resolvconf/resolv.conf"
+        nameserver ${DEFAULT_PRIMARY_NAMESERVER}
+        nameserver ${DEFAULT_SECONDARY_NAMESERVER}
+		EOF
+    else
+        busybox printf "$dns_servers" >"${INSTALLED_ROOTFS_DIR}/${distro_name}/run/resolvconf/resolv.conf"
+    fi
+
     busybox ln -sf "${INSTALLED_ROOTFS_DIR}/${distro_name}/run/resolvconf/resolv.conf" "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/resolv.conf" 2>/dev/null || true
 
     # Default /etc/hosts may be empty or incomplete.
