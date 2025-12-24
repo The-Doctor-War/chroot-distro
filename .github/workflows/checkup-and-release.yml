@@ -254,6 +254,7 @@ jobs:
             -x "CHANGELOG.md" \
             -x ".git/*" \
             -x ".github/*" \
+            -x ".editorconfig" \
             -x "*.zip"
 
           ls -lh chroot-distro.zip
