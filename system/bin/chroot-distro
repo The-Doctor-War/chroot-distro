@@ -843,34 +843,33 @@ command_install() {
 		EOF
 
     # Fix root user - add to network groups
-    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -a -G aid_inet,aid_net_raw root 2>/dev/null || true
+    run_chroot_cmd /sbin/usermod -a -G aid_inet,aid_net_raw root 2>/dev/null || true
 
     # Fix _apt user if exists (Debian-based distributions)
-    if chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/id _apt >/dev/null 2>&1; then
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/sbin/usermod -a -G aid_inet,aid_net_raw _apt 2>/dev/null || true
+    if run_chroot_cmd /bin/id _apt >/dev/null 2>&1; then
+        run_chroot_cmd /usr/sbin/usermod -a -G aid_inet,aid_net_raw _apt 2>/dev/null || true
 
         # Create directories
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/lib/apt/lists/partial 2>/dev/null || true
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/mkdir -p /var/cache/apt/archives/partial 2>/dev/null || true
+        run_chroot_cmd /usr/bin/mkdir -p /var/lib/apt/lists/partial 2>/dev/null || true
+        run_chroot_cmd /usr/bin/mkdir -p /var/cache/apt/archives/partial 2>/dev/null || true
 
         # Fix ownership
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:aid_inet /var/lib/apt 2>/dev/null || true
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chown -R _apt:aid_inet /var/cache/apt 2>/dev/null || true
+        run_chroot_cmd /usr/bin/chown -R _apt:aid_inet /var/lib/apt 2>/dev/null || true
+        run_chroot_cmd /usr/bin/chown -R _apt:aid_inet /var/cache/apt 2>/dev/null || true
 
-        #  Fix permissions
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/lib/apt 2>/dev/null || true
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /usr/bin/chmod -R 755 /var/cache/apt 2>/dev/null || true
+        # Fix permissions
+        run_chroot_cmd /usr/bin/chmod -R 755 /var/lib/apt 2>/dev/null || true
+        run_chroot_cmd /usr/bin/chmod -R 755 /var/cache/apt 2>/dev/null || true
     fi
 
     # Fix ALL regular users (UID >= 1000, UID < 65534)
     msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Configuring network access for all users...${RST}"
     busybox awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/passwd" | while IFS= read -r user; do
-        chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /sbin/usermod -a -G aid_inet,aid_net_raw "$user" 2>/dev/null || true
+        run_chroot_cmd /sbin/usermod -a -G aid_inet,aid_net_raw "$user" 2>/dev/null || true
     done
 
     # Set ping capability
-    chroot "${INSTALLED_ROOTFS_DIR}/${distro_name}" /bin/sh -c \
-        'command -v setcap >/dev/null 2>&1 && setcap cap_net_raw+ep /bin/ping 2>/dev/null || true'
+    run_chroot_cmd /bin/sh -c 'command -v setcap >/dev/null 2>&1 && setcap cap_net_raw+ep /bin/ping 2>/dev/null || true'
 
     # Configure adduser for future users (Debian-based systems)
     if [ -f "${INSTALLED_ROOTFS_DIR}/${distro_name}/etc/adduser.conf" ]; then
@@ -899,7 +898,7 @@ command_install() {
     MISC_GID=$(busybox id -g misc 2>/dev/null)
     [ -z "$MISC_GID" ] && MISC_GID=9998
 
-    chroot "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}" /bin/sh -c "
+    run_chroot_cmd /bin/sh -c "
     getent group system >/dev/null 2>&1 || {
         groupadd -g $SYSTEM_GID system 2>/dev/null || true
     }
