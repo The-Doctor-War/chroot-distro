@@ -202,6 +202,70 @@ decrement_session() {
 
 #############################################################################
 #
+# FUNCTION TO SAVE ORIGINAL PERMISSIONS OF /data DIRECTORIES
+#
+# Saves the original permissions before modifying them for non-root users
+# with --termux-home
+#
+#############################################################################
+
+save_data_permissions() {
+	distro_name="$1"
+	if [ -z "$distro_name" ]; then
+		msg "${BRED}Error: save_data_permissions() called without distro_name${RST}"
+		return 1
+	fi
+
+	perms_file="${RUNTIME_DIR}/data/${distro_name}/data_perms"
+	busybox mkdir -p "$(dirname "$perms_file")" 2>/dev/null || true
+
+	# Save permissions of the ACTUAL HOST directories we're about to modify.
+	# We must use host paths because we need to restore them after unmounting.
+	{
+		busybox stat -c "%n:%a" "/data" 2>/dev/null
+		busybox stat -c "%n:%a" "/data/data" 2>/dev/null
+		busybox stat -c "%n:%a" "/data/data/com.termux" 2>/dev/null
+		busybox stat -c "%n:%a" "/data/data/com.termux/files" 2>/dev/null
+		# Also save TERMUX_HOME permissions as we might modify them
+		busybox stat -c "%n:%a" "$TERMUX_HOME" 2>/dev/null
+	} >"$perms_file" 2>/dev/null
+}
+
+#############################################################################
+#
+# FUNCTION TO RESTORE ORIGINAL PERMISSIONS OF /data DIRECTORIES
+#
+# Restores the saved permissions after unmounting
+#
+#############################################################################
+
+restore_data_permissions() {
+	distro_name="$1"
+	if [ -z "$distro_name" ]; then
+		msg "${BRED}Error: restore_data_permissions() called without distro_name${RST}"
+		return 1
+	fi
+
+	perms_file="${RUNTIME_DIR}/data/${distro_name}/data_perms"
+
+	if [ ! -f "$perms_file" ]; then
+		# No saved permissions, nothing to restore
+		return 0
+	fi
+
+	# Restore each saved permission
+	while IFS=: read -r path perms; do
+		if [ -n "$path" ] && [ -n "$perms" ] && [ -e "$path" ]; then
+			busybox chmod "$perms" "$path" 2>/dev/null || true
+		fi
+	done <"$perms_file"
+
+	# Delete the permissions file
+	busybox rm -f "$perms_file"
+}
+
+#############################################################################
+#
 # FUNCTION TO DETECT CPU ARCHITECTURE IN GIVEN DISTRIBUTION
 #
 #############################################################################
@@ -606,6 +670,9 @@ cleanup_all_mounts() {
 	done
 
 	busybox rm -f "$mount_tracker_file"
+
+	# Restore original permissions of /data directories if they were modified
+	restore_data_permissions "$distro_name"
 }
 
 #############################################################################
@@ -1415,6 +1482,31 @@ command_login() {
 				user_home="/home/${login_user}"
 			fi
 			safe_mount "$TERMUX_HOME" "${INSTALLED_ROOTFS_DIR}/${distro_name}${user_home}" "$distro_name"
+
+			# sorry for this stupid hack , but i have don't know any other way to do this
+			#
+			# Fix permissions for non-root users to access Termux home
+			# Save original permissions first so we can restore them later
+			save_data_permissions "$distro_name"
+
+			# The problem: /data has restrictive permissions (771, system:system)
+			# Non-root users can't traverse /data to reach /data/data/com.termux
+			# Solution: Make /data readable+executable (traversable) inside the chroot
+			# This is safe because it only affects the chroot, not Android's /data
+			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data" 2>/dev/null || {
+				msg "${YELLOW}Warning: could not make /data traversable for ${login_user}${RST}"
+			}
+
+			# Also ensure the parent directories are traversable
+			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data" 2>/dev/null || true
+			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux" 2>/dev/null || true
+			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux/files" 2>/dev/null || true
+
+			# Make the home directory itself accessible to the chroot user
+			# Since the owner (Termux app) is different from chroot user, we open permissions
+			busybox chmod 777 "${INSTALLED_ROOTFS_DIR}/${distro_name}${user_home}" 2>/dev/null || {
+				msg "${YELLOW}Warning: could not make ${user_home} writeable${RST}"
+			}
 		fi
 	fi
 
@@ -1894,6 +1986,9 @@ command_unmount() {
 		command_unmount_system_points_force "$distro_name"
 	fi
 	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting completed.${RST}"
+
+	# Restore original permissions if not already done
+	restore_data_permissions "$distro_name"
 }
 
 command_unmount_system_points() {
