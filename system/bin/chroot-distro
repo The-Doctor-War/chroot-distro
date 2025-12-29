@@ -687,8 +687,6 @@ cleanup_all_mounts() {
 		return 0
 	fi
 
-	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Cleaning up mount points for ${distro_name}...${RST}"
-
 	# Unmount in reverse order
 	busybox tac "$mount_tracker_file" | while IFS= read -r mount_point; do
 		if busybox mount | busybox grep -q " on $mount_point "; then
@@ -701,6 +699,8 @@ cleanup_all_mounts() {
 
 	# Restore original permissions of /data directories if they were modified
 	restore_data_permissions "$distro_name"
+
+	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Cleaned up all mount points for ${distro_name}...${RST}"
 }
 
 #############################################################################
@@ -1526,9 +1526,15 @@ command_login() {
 			}
 
 			# Also ensure the parent directories are traversable
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data" 2>/dev/null || true
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux" 2>/dev/null || true
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux/files" 2>/dev/null || true
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data"; then
+				msg "${YELLOW}Warning: could not make /data/data traversable${RST}"
+			fi
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux"; then
+				msg "${YELLOW}Warning: could not make /data/data/com.termux traversable${RST}"
+			fi
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux/files"; then
+				msg "${YELLOW}Warning: could not make /data/data/com.termux/files traversable${RST}"
+			fi
 
 			# Make the home directory itself AND CONTENTS accessible to the chroot user
 			# Recursive change needed so user can access subdirectories
@@ -1560,10 +1566,18 @@ command_login() {
 			fi
 
 			# Make /data and parents traversable
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data" 2>/dev/null || true
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data" 2>/dev/null || true
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux" 2>/dev/null || true
-			busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux/files" 2>/dev/null || true
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data"; then
+				msg "${YELLOW}Warning: could not make /data traversable${RST}"
+			fi
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data"; then
+				msg "${YELLOW}Warning: could not make /data/data traversable${RST}"
+			fi
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux"; then
+				msg "${YELLOW}Warning: could not make /data/data/com.termux traversable${RST}"
+			fi
+			if ! busybox chmod o+rx "${INSTALLED_ROOTFS_DIR}/${distro_name}/data/data/com.termux/files"; then
+				msg "${YELLOW}Warning: could not make /data/data/com.termux/files traversable${RST}"
+			fi
 
 			# Make the specific work dir accessible recursively
 			# Note: We access via chroot path which maps to host path via bind mount
@@ -2037,7 +2051,7 @@ command_unmount() {
 	fi
 
 	# Use tracked mount cleanup for safe unmounting
-	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting system points for ${distro_name}...${RST}"
+	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting mount points for ${distro_name}...${RST}"
 
 	mount_tracker_file=$(get_mount_tracker_file "$distro_name")
 	if [ -f "$mount_tracker_file" ]; then
