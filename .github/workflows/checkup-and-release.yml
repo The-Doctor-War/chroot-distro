@@ -29,6 +29,12 @@ jobs:
           echo "Checking uninstall.sh..."
           shellcheck uninstall.sh
 
+          echo "Checking service.sh..."
+          shellcheck service.sh
+
+          echo "Checking status.sh..."
+          shellcheck status.sh
+
           echo "✅ All shell scripts passed ShellCheck!"
 
   version-check:

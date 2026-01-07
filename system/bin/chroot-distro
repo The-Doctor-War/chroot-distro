@@ -49,6 +49,7 @@ PROGRAM_NAME=$(basename "$(realpath "$0")")
 TERMUX_ROOT_DIR=/data/data/com.termux
 TERMUX_FILES_DIR=${TERMUX_ROOT_DIR}/files
 TERMUX_HOME="${TERMUX_FILES_DIR}/home"
+MODDIR="/data/adb/modules/chroot-distro"
 TERMUX_PREFIX="${TERMUX_FILES_DIR}/usr"
 
 # Base directory where script keeps runtime data
@@ -157,6 +158,9 @@ increment_session() {
 	new_count=$((current_count + 1))
 	busybox echo "$new_count" >"$session_file"
 	# msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Active sessions for ${distro_name}: ${new_count}${RST}"
+
+	# Update module description
+	sh "$MODDIR/status.sh"
 }
 
 #############################################################################
@@ -193,13 +197,20 @@ decrement_session() {
 	if [ "$current_count" -le 1 ]; then
 		# This was the last session
 		busybox rm -f "$session_file"
+
+		# Update module description
+		sh "$MODDIR/status.sh"
 		return 0
 	else
 		new_count=$((current_count - 1))
 		busybox echo "$new_count" >"$session_file"
 		# msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Active sessions for ${distro_name}: ${new_count}${RST}"
+
+		# Update module description
+		sh "$MODDIR/status.sh"
 		return 1
 	fi
+
 }
 
 #############################################################################
@@ -1183,6 +1194,9 @@ command_install() {
 		)
 	fi
 
+	# Update module description
+	sh "$MODDIR/status.sh"
+
 	msg
 	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Installation completed successfully!${RST}"
 	msg
@@ -1982,6 +1996,9 @@ command_remove() {
 		msg "${BLUE}[${BRED}!${BLUE}] ${CYAN}Finished with errors. Some files probably were not deleted.${RST}"
 		return 1
 	fi
+
+	# Update module description
+	sh "$MODDIR/status.sh"
 }
 
 command_remove_help() {
@@ -2103,6 +2120,9 @@ command_unmount() {
 
 	# Restore original permissions if not already done
 	restore_data_permissions "$distro_name"
+
+	# Update module description
+	sh "$MODDIR/status.sh"
 
 	msg "${BLUE}[${GREEN}*${BLUE}] ${CYAN}Unmounting completed.${RST}"
 }
