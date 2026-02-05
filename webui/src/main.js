@@ -476,7 +476,10 @@ async function installWithTerminal(distroName, btn, card) {
 
 	// Disable button and open terminal
 	btn.disabled = true;
-	btn.textContent = "Installing...";
+	// Animate icon
+	const btnIcon = btn.querySelector("svg");
+	if (btnIcon) btnIcon.classList.add("download-anim");
+
 	closeBtn.disabled = true;
 	terminalOutput.innerHTML = "";
 
@@ -533,6 +536,7 @@ async function installWithTerminal(distroName, btn, card) {
 
 		// Update terminal UI
 		terminalSpinner.style.display = "none";
+		if (btnIcon) btnIcon.classList.remove("download-anim"); // Stop animation
 
 		if (installSuccess) {
 			terminalTitle.textContent = `${distroName} installed successfully!`;
@@ -556,11 +560,13 @@ async function installWithTerminal(distroName, btn, card) {
 			showToast("Installation failed", true);
 			closeBtn.disabled = false;
 			btn.disabled = false;
-			btn.textContent = "Install";
+			// btn.textContent = "Install"; // Removed text reset
 		}
 	} catch (e) {
 		console.error("Install error:", e);
 		terminalSpinner.style.display = "none";
+		if (btnIcon) btnIcon.classList.remove("download-anim"); // Stop animation
+
 		terminalTitle.textContent = "Installation error";
 		terminalTitle.style.color = "#e94560";
 		appendTerminalLine(terminalOutput, `Error: ${e.message}`, "error");
@@ -568,7 +574,7 @@ async function installWithTerminal(distroName, btn, card) {
 		showToast(e.message, true);
 		closeBtn.disabled = false;
 		btn.disabled = false;
-		btn.textContent = "Install";
+		// btn.textContent = "Install"; // Removed text reset
 	}
 }
 
