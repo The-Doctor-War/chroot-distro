@@ -149,6 +149,15 @@ body {
 	font-size: 18px;
 	font-weight: 500;
 	color: var(--text-primary);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.distro-version {
+	font-size: 14px;
+	color: var(--text-muted);
+	font-weight: 400;
 }
 
 .distro-status {
@@ -345,7 +354,6 @@ body {
 }
 
 @keyframes shake {
-
 	0%,
 	100% {
 		transform: rotate(0deg);
@@ -755,7 +763,9 @@ body {
 	text-decoration: none;
 	font-size: 16px;
 	font-weight: 500;
-	transition: transform 0.2s ease, box-shadow 0.2s ease;
+	transition:
+		transform 0.2s ease,
+		box-shadow 0.2s ease;
 	box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
@@ -780,7 +790,9 @@ body {
 	font-size: 15px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: background-color 0.2s ease, transform 0.2s ease;
+	transition:
+		background-color 0.2s ease,
+		transform 0.2s ease;
 }
 
 .settings-action-btn:active {
@@ -812,7 +824,9 @@ body {
 	z-index: 100;
 	opacity: 0;
 	visibility: hidden;
-	transition: opacity 0.3s ease, visibility 0.3s ease;
+	transition:
+		opacity 0.3s ease,
+		visibility 0.3s ease;
 	padding: 20px;
 }
 
@@ -918,7 +932,9 @@ body {
 	margin-top: 0;
 	padding-top: 0;
 	border-radius: 0 0 12px 12px;
-	transition: max-height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), padding 0.4s ease;
+	transition:
+		max-height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
+		padding 0.4s ease;
 }
 
 #cache-terminal-container .terminal-container.open {
@@ -935,3 +951,4 @@ body {
 		padding: 20px 24px;
 	}
 }
+

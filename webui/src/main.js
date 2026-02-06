@@ -113,32 +113,29 @@ async function fetchDistros() {
  * @param {string} view 'home' or 'settings'
  */
 function switchView(view) {
-	if (view === 'home') {
-		mainContent.classList.remove('hidden');
-		settingsView.classList.add('hidden');
-		navHome.classList.add('active');
-		navSettings.classList.remove('active');
+	if (view === "home") {
+		mainContent.classList.remove("hidden");
+		settingsView.classList.add("hidden");
+		navHome.classList.add("active");
+		navSettings.classList.remove("active");
 		// Optional: refresh home data
-	} else if (view === 'settings') {
-		mainContent.classList.add('hidden');
-		settingsView.classList.remove('hidden');
-		navHome.classList.remove('active');
-		navSettings.classList.add('active');
+	} else if (view === "settings") {
+		mainContent.classList.add("hidden");
+		settingsView.classList.remove("hidden");
+		navHome.classList.remove("active");
+		navSettings.classList.add("active");
 	}
 }
-
-
 
 /**
  * Show Help Modal
  */
 async function showHelp() {
-	const originalText = helpBtn.querySelector('span').textContent;
-	helpBtn.querySelector('span').textContent = "Loading...";
+	const originalText = helpBtn.querySelector("span").textContent;
+	helpBtn.querySelector("span").textContent = "Loading...";
 	helpBtn.disabled = true;
 
 	try {
-
 		const { errno, stdout, stderr } = await exec("export JOSINIFY=true && chroot-distro --help");
 
 		let content = "";
@@ -154,18 +151,18 @@ async function showHelp() {
 
 		if (json && json.commands) {
 			// Format as table
-			const table = document.createElement('div');
+			const table = document.createElement("div");
 			table.className = "help-table";
 
-			json.commands.forEach(cmd => {
-				const row = document.createElement('div');
+			json.commands.forEach((cmd) => {
+				const row = document.createElement("div");
 				row.className = "help-row";
 
-				const cmdName = document.createElement('div');
+				const cmdName = document.createElement("div");
 				cmdName.className = "help-cmd";
 				cmdName.textContent = cmd.name;
 
-				const cmdDesc = document.createElement('div');
+				const cmdDesc = document.createElement("div");
 				cmdDesc.className = "help-desc";
 				cmdDesc.textContent = cmd.description || "No description available";
 
@@ -182,12 +179,12 @@ async function showHelp() {
 			helpContent.textContent = content || "No output returned.";
 		}
 
-		helpModal.classList.add('open');
+		helpModal.classList.add("open");
 	} catch (e) {
 		showToast("Failed to run help command", true);
 		console.error(e);
 	} finally {
-		helpBtn.querySelector('span').textContent = originalText;
+		helpBtn.querySelector("span").textContent = originalText;
 		helpBtn.disabled = false;
 	}
 }
@@ -205,20 +202,20 @@ async function clearCache() {
 	// The prompt says "show the output in a terminal box".
 	// I will append a terminal output to the settings page dynamically.
 
-	let terminal = document.getElementById('cache-terminal');
+	let terminal = document.getElementById("cache-terminal");
 	if (!terminal) {
-		const container = document.createElement('div');
-		container.innerHTML = createTerminalHTML('cache-clear');
+		const container = document.createElement("div");
+		container.innerHTML = createTerminalHTML("cache-clear");
 		terminal = container.firstElementChild;
-		terminal.id = 'cache-terminal';
+		terminal.id = "cache-terminal";
 
 		// Insert into the placeholder container
-		const placeholder = document.getElementById('cache-terminal-container');
+		const placeholder = document.getElementById("cache-terminal-container");
 		if (placeholder) {
 			placeholder.appendChild(terminal);
 		} else {
 			// Fallback
-			document.querySelector('.settings-container').appendChild(terminal);
+			document.querySelector(".settings-container").appendChild(terminal);
 		}
 	}
 
@@ -268,7 +265,6 @@ async function clearCache() {
 			terminalTitle.textContent = "Failed";
 			terminalTitle.style.color = "#e94560";
 		}
-
 	} catch (e) {
 		appendTerminalLine(terminalOutput, `Error: ${e.message}`, "error");
 	}
@@ -350,20 +346,24 @@ function createDistroCard(distro) {
 	card.innerHTML = `
         <div class="distro-card-content" data-distro="${distro.name}">
             <div class="distro-info">
-                <span class="distro-name">${distro.name}</span>
+                <span class="distro-name">
+                    ${distro.name}
+                    ${distro.version ? `<span class="distro-version">[${distro.version}]</span>` : ""}
+                </span>
                 <div class="status-row">
                     <span class="distro-status ${isInstalled ? "installed" : ""}">
                         <span class="status-dot ${isInstalled ? "installed" : ""}"></span>
                         ${isInstalled ? "Installed" : "Not installed"}
                     </span>
-                    ${isRunning
-			? `
+                    ${
+						isRunning
+							? `
                     <span class="distro-status running">
                         <span class="status-dot running"></span>
                         Running
                     </span>`
-			: ""
-		}
+							: ""
+					}
                 </div>
             </div>
             ${buttonsHTML}
@@ -964,14 +964,17 @@ async function init() {
 
 	// Navigation & Settings
 	if (navHome && navSettings) {
-		navHome.addEventListener('click', () => switchView('home'));
-		navSettings.addEventListener('click', () => switchView('settings'));
+		navHome.addEventListener("click", () => switchView("home"));
+		navSettings.addEventListener("click", () => switchView("settings"));
 	}
 
-	if (helpBtn) helpBtn.addEventListener('click', showHelp);
-	if (closeHelpModalBtn) closeHelpModalBtn.addEventListener('click', () => helpModal.classList.remove('open'));
-	if (helpModal) helpModal.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.classList.remove('open'); });
-	if (clearCacheBtn) clearCacheBtn.addEventListener('click', clearCache);
+	if (helpBtn) helpBtn.addEventListener("click", showHelp);
+	if (closeHelpModalBtn) closeHelpModalBtn.addEventListener("click", () => helpModal.classList.remove("open"));
+	if (helpModal)
+		helpModal.addEventListener("click", (e) => {
+			if (e.target === helpModal) helpModal.classList.remove("open");
+		});
+	if (clearCacheBtn) clearCacheBtn.addEventListener("click", clearCache);
 }
 
 document.addEventListener("DOMContentLoaded", init);
