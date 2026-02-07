@@ -1,5 +1,6 @@
 import { exec, spawn, toast } from "kernelsu";
 
+const LOG_DIR = "/data/local/tmp/chroot-distro-logs";
 const mainContent = document.getElementById("main-content");
 const settingsView = document.getElementById("settings-view");
 const versionText = document.getElementById("version-text");
@@ -22,6 +23,107 @@ const searchBtn = document.getElementById("search-btn");
 let allDistros = [];
 
 const activeTerminals = new Map();
+const activeWatchers = new Map();
+
+/**
+ * Get log path for distro action
+ * @param {string} distroName
+ * @param {string} action
+ * @returns {string}
+ */
+function getLogPath(distroName, action) {
+	return `${LOG_DIR}/${distroName}_${action}.log`;
+}
+
+/**
+ * Save active task to localStorage
+ * @param {string} distro
+ * @param {string} action
+ */
+function saveActiveTask(distro, action) {
+	const tasks = JSON.parse(localStorage.getItem("active_tasks") || "{}");
+	tasks[distro] = { action, timestamp: Date.now() };
+	localStorage.setItem("active_tasks", JSON.stringify(tasks));
+}
+
+/**
+ * Remove active task from localStorage
+ * @param {string} distro
+ */
+function removeActiveTask(distro) {
+	const tasks = JSON.parse(localStorage.getItem("active_tasks") || "{}");
+	delete tasks[distro];
+	localStorage.setItem("active_tasks", JSON.stringify(tasks));
+}
+
+/**
+ * Get active task for distro
+ * @param {string} distro
+ * @returns {Object|null}
+ */
+function getActiveTask(distro) {
+	const tasks = JSON.parse(localStorage.getItem("active_tasks") || "{}");
+	return tasks[distro] || null;
+}
+
+/**
+ * Start watching log file and updating terminal
+ * @param {string} distroName
+ * @param {string} filePath
+ * @param {HTMLElement} terminalOutput
+ * @param {Function} onFinish
+ */
+async function startLogWatcher(distroName, filePath, terminalOutput, onFinish) {
+	if (activeWatchers.has(distroName)) return;
+
+	let offset = 0;
+	let finishCheckCount = 0;
+	const interval = setInterval(async () => {
+		try {
+			const { stdout } = await exec(`cat "${filePath}"`);
+
+			if (stdout && stdout.length > offset) {
+				const newContent = stdout.slice(offset);
+				offset = stdout.length;
+				appendTerminalLine(terminalOutput, newContent);
+				finishCheckCount = 0; // Reset finish check if data is flowing
+			} else {
+				finishCheckCount++;
+			}
+
+			// Check if process is still running if we haven't seen data for a while
+			// This is a "watchdog" style check.
+			if (finishCheckCount > 10) {
+				// Every 1s * 10 = 10s of no data.
+				// We rely on the caller to clear the interval via onFinish or external check usually.
+				// But for restored sessions, we need to know when to stop.
+				const isRunning = await isProcessRunning(distroName);
+				if (!isRunning) {
+					clearInterval(interval);
+					activeWatchers.delete(distroName);
+					if (onFinish) onFinish(); // Logic to finalize UI
+				}
+				finishCheckCount = 0;
+			}
+		} catch (e) {
+			// File might not exist yet or error reading
+			console.warn("Log watcher error:", e);
+		}
+	}, 1000);
+
+	activeWatchers.set(distroName, interval);
+}
+
+/**
+ * Check if a chroot-distro process for the distro is running
+ * @param {string} distroName
+ * @returns {Promise<boolean>}
+ */
+async function isProcessRunning(distroName) {
+	// Check for direct chroot-distro process or wrapper script
+	const { stdout } = await exec(`ps -ef | grep -E "(chroot-distro.*(install|remove|unmount).*${distroName}|${distroName}_(install|uninstall|stop)\\.sh)" | grep -v grep`);
+	return !!stdout && stdout.trim().length > 0;
+}
 
 /**
  * Show toast message
@@ -59,6 +161,25 @@ function applyRipple(element) {
 		element.appendChild(ripple);
 		setTimeout(() => ripple.remove(), 600);
 	});
+}
+
+/**
+ * Append line to terminal
+ * @param {HTMLElement} terminalOutput
+ * @param {string} text
+ * @param {string} type 'normal', 'error', 'success'
+ */
+function appendTerminalLine(terminalOutput, text, type = "normal") {
+	if (!text) return;
+	const lines = text.split("\n");
+	lines.forEach((line) => {
+		if (line.trim() === "") return;
+		const div = document.createElement("div");
+		div.className = `terminal-line ${type}`;
+		div.textContent = line;
+		terminalOutput.appendChild(div);
+	});
+	terminalOutput.scrollTop = terminalOutput.scrollHeight;
 }
 
 /**
@@ -111,6 +232,110 @@ async function fetchDistros() {
 		...d,
 		running: runningNames.includes(d.name),
 	}));
+}
+
+/**
+ * Sync active tasks with UI (restore sessions)
+ */
+async function syncActiveTasksUI() {
+	const tasks = JSON.parse(localStorage.getItem("active_tasks") || "{}");
+	const distros = Object.keys(tasks);
+
+	for (const distro of distros) {
+		const task = tasks[distro];
+		const card = document.getElementById(`card-${distro}`);
+		if (!card) continue;
+
+		// Visual state update
+		const btn = card.querySelector(`.action-btn[data-action="${task.action}"]`);
+
+		if (task.action === "install" || task.action === "uninstall") {
+			if (btn) btn.disabled = true;
+
+			// Add animation to button icon
+			const btnIcon = btn ? btn.querySelector("svg") : null;
+			if (btnIcon) {
+				if (task.action === "install") {
+					btnIcon.classList.add("download-anim");
+				} else {
+					btnIcon.classList.add("shake-anim");
+				}
+			}
+
+			// Open terminal
+			const terminal = card.querySelector(`#terminal-${distro}`);
+			if (!terminal) continue;
+
+			toggleTerminal(distro, card);
+
+			const terminalOutput = terminal.querySelector(".terminal-output");
+			const terminalTitle = terminal.querySelector(".terminal-title span");
+			const closeBtn = terminal.querySelector(".terminal-close-btn");
+
+			if (closeBtn) closeBtn.disabled = true;
+			if (!terminal.classList.contains("open")) terminal.classList.add("open");
+			terminalOutput.innerHTML = ""; // Clear "No recent logs"
+
+			const logPath = getLogPath(distro, task.action);
+			terminalTitle.textContent = `${task.action === "install" ? "Installing" : "Removing"} ${distro}...`;
+
+			const isRunning = await isProcessRunning(distro);
+
+			if (activeWatchers.has(distro)) {
+				clearInterval(activeWatchers.get(distro));
+				activeWatchers.delete(distro);
+			}
+
+			if (isRunning) {
+				startLogWatcher(distro, logPath, terminalOutput, async () => {
+					await handleTaskCompletion(distro, task.action, card, terminal, terminalTitle, terminalOutput, btn, closeBtn);
+					if (btnIcon) btnIcon.classList.remove("download-anim", "shake-anim");
+				});
+			} else {
+				const { stdout } = await exec(`cat "${logPath}"`);
+				if (stdout) appendTerminalLine(terminalOutput, stdout);
+				await handleTaskCompletion(distro, task.action, card, terminal, terminalTitle, terminalOutput, btn, closeBtn);
+				if (btnIcon) btnIcon.classList.remove("download-anim", "shake-anim");
+			}
+		}
+	}
+}
+
+/**
+ * Handle task completion logic
+ */
+async function handleTaskCompletion(distroName, action, card, terminal, terminalTitle, terminalOutput, btn, closeBtn) {
+	activeWatchers.delete(distroName); // Ensure watcher is gone
+	removeActiveTask(distroName);
+
+	const { errno, stdout } = await exec("JOSINIFY=true chroot-distro list");
+	let success = false;
+	if (errno === 0 && stdout) {
+		const data = JSON.parse(stdout.trim());
+		const distroInfo = data.distributions?.find((d) => d.name === distroName);
+		if (action === "install") success = distroInfo?.installed === true;
+		if (action === "uninstall") success = distroInfo?.installed === false;
+	}
+
+	if (success) {
+		terminalTitle.textContent = `${distroName} ${action === "install" ? "installed" : "removed"} successfully!`;
+		terminalTitle.style.color = "#4ade80";
+		appendTerminalLine(terminalOutput, `✓ ${action === "install" ? "Installation" : "Removal"} completed successfully!`, "success");
+		showToast(`${distroName} ${action === "install" ? "installed" : "removed"} successfully!`);
+
+		setTimeout(async () => {
+			terminal.classList.remove("open");
+			if (closeBtn) closeBtn.disabled = false;
+			if (btn) btn.disabled = false;
+			await refreshDistroCard(distroName, card);
+		}, 3000);
+	} else {
+		terminalTitle.textContent = "Operation failed (or checking failed)";
+		terminalTitle.style.color = "#e94560";
+		appendTerminalLine(terminalOutput, "✗ Operation failed.", "error");
+		if (closeBtn) closeBtn.disabled = false;
+		if (btn) btn.disabled = false;
+	}
 }
 
 /**
@@ -530,24 +755,26 @@ async function stopWithTerminal(distroName, btn, card) {
 	appendTerminalLine(terminalOutput, "");
 
 	try {
-		const process = spawn("chroot-distro", ["unmount", distroName]);
-		activeTerminals.set(distroName, process);
+		const logPath = getLogPath(distroName, "stop");
+		await exec(`mkdir -p "${LOG_DIR}" && echo "Starting stop..." > "${logPath}"`);
 
-		process.stdout.on("data", (data) => {
-			appendTerminalLine(terminalOutput, data.toString());
-		});
+		const scriptPath = `${LOG_DIR}/${distroName}_stop.sh`;
+		await exec(`echo 'chroot-distro unmount ${distroName} >> "${logPath}" 2>&1' > "${scriptPath}" && chmod +x "${scriptPath}"`);
+		const process = spawn("sh", [scriptPath]);
 
-		process.stderr.on("data", (data) => {
-			appendTerminalLine(terminalOutput, data.toString(), "error");
-		});
+		startLogWatcher(distroName, logPath, terminalOutput);
 
 		const exitCode = await new Promise((resolve) => {
 			process.on("exit", (code) => resolve(code));
-			process.on("error", (err) => {
-				appendTerminalLine(terminalOutput, `Error: ${err.message}`, "error");
-				resolve(1);
-			});
+			process.on("error", () => resolve(1));
 		});
+
+		if (activeWatchers.has(distroName)) {
+			clearInterval(activeWatchers.get(distroName));
+			activeWatchers.delete(distroName);
+			const { stdout } = await exec(`cat "${logPath}"`);
+			if (stdout) appendTerminalLine(terminalOutput, stdout);
+		}
 
 		activeTerminals.delete(distroName);
 
@@ -639,15 +866,19 @@ async function installWithTerminal(distroName, btn, card) {
 	appendTerminalLine(terminalOutput, "");
 
 	try {
-		const process = spawn("chroot-distro", ["install", distroName]);
-		activeTerminals.set(distroName, process);
+		const logPath = getLogPath(distroName, "install");
+		await exec(`mkdir -p "${LOG_DIR}"`);
 
-		process.stdout.on("data", (data) => {
-			appendTerminalLine(terminalOutput, data.toString());
-		});
+		saveActiveTask(distroName, "install");
 
-		process.stderr.on("data", (data) => {
-			appendTerminalLine(terminalOutput, data.toString(), "error");
+		const scriptPath = `${LOG_DIR}/${distroName}_install.sh`;
+		await exec(`echo 'chroot-distro install ${distroName} > "${logPath}" 2>&1' > "${scriptPath}" && chmod +x "${scriptPath}"`);
+
+		const process = spawn("sh", [scriptPath]);
+
+		startLogWatcher(distroName, logPath, terminalOutput, async () => {
+			await handleTaskCompletion(distroName, "install", card, terminal, terminalTitle, terminalOutput, btn, closeBtn);
+			if (btnIcon) btnIcon.classList.remove("download-anim");
 		});
 
 		const exitCode = await new Promise((resolve) => {
@@ -660,44 +891,17 @@ async function installWithTerminal(distroName, btn, card) {
 			});
 		});
 
-		activeTerminals.delete(distroName);
-
-		const { errno, stdout } = await exec("JOSINIFY=true chroot-distro list");
-		let installSuccess = false;
-
-		if (errno === 0 && stdout) {
-			const data = JSON.parse(stdout.trim());
-			const distroInfo = data.distributions?.find((d) => d.name === distroName);
-			installSuccess = distroInfo?.installed === true;
+		if (activeWatchers.has(distroName)) {
+			clearInterval(activeWatchers.get(distroName));
+			activeWatchers.delete(distroName);
+			const { stdout } = await exec(`cat "${logPath}"`);
+			if (stdout) appendTerminalLine(terminalOutput, stdout);
 		}
-
-		if (btnIcon) btnIcon.classList.remove("download-anim"); // Stop animation
-
-		if (installSuccess) {
-			terminalTitle.textContent = `${distroName} installed successfully!`;
-			terminalTitle.style.color = "#4ade80";
-			appendTerminalLine(terminalOutput, "", "success");
-			appendTerminalLine(terminalOutput, "✓ Installation completed successfully!", "success");
-
-			showToast(`${distroName} installed successfully!`);
-
-			setTimeout(async () => {
-				terminal.classList.remove("open");
-				await refreshDistroCard(distroName, card);
-			}, 2000);
-		} else {
-			terminalTitle.textContent = `Installation failed (exit code: ${exitCode})`;
-			terminalTitle.style.color = "#e94560";
-			appendTerminalLine(terminalOutput, "", "error");
-			appendTerminalLine(terminalOutput, `✗ Installation failed with exit code ${exitCode}`, "error");
-
-			showToast("Installation failed", true);
-			closeBtn.disabled = false;
-			btn.disabled = false;
-		}
+		await handleTaskCompletion(distroName, "install", card, terminal, terminalTitle, terminalOutput, btn, closeBtn);
+		if (btnIcon) btnIcon.classList.remove("download-anim");
 	} catch (e) {
 		console.error("Install error:", e);
-		if (btnIcon) btnIcon.classList.remove("download-anim"); // Stop animation
+		if (btnIcon) btnIcon.classList.remove("download-anim");
 
 		terminalTitle.textContent = "Installation error";
 		terminalTitle.style.color = "#e94560";
@@ -706,6 +910,7 @@ async function installWithTerminal(distroName, btn, card) {
 		showToast(e.message, true);
 		closeBtn.disabled = false;
 		btn.disabled = false;
+		removeActiveTask(distroName);
 	}
 }
 
@@ -745,15 +950,18 @@ async function uninstallWithTerminal(distroName, btn, card) {
 	appendTerminalLine(terminalOutput, "");
 
 	try {
-		const process = spawn("chroot-distro", ["remove", distroName]);
-		activeTerminals.set(distroName, process);
+		const logPath = getLogPath(distroName, "uninstall");
+		await exec(`mkdir -p "${LOG_DIR}"`);
+		saveActiveTask(distroName, "uninstall");
 
-		process.stdout.on("data", (data) => {
-			appendTerminalLine(terminalOutput, data.toString());
-		});
+		const scriptPath = `${LOG_DIR}/${distroName}_uninstall.sh`;
+		await exec(`echo 'chroot-distro remove ${distroName} > "${logPath}" 2>&1' > "${scriptPath}" && chmod +x "${scriptPath}"`);
 
-		process.stderr.on("data", (data) => {
-			appendTerminalLine(terminalOutput, data.toString(), "error");
+		const process = spawn("sh", [scriptPath]);
+
+		startLogWatcher(distroName, logPath, terminalOutput, async () => {
+			await handleTaskCompletion(distroName, "uninstall", card, terminal, terminalTitle, terminalOutput, btn, closeBtn);
+			if (btnIcon) btnIcon.classList.remove("shake-anim");
 		});
 
 		const exitCode = await new Promise((resolve) => {
@@ -764,42 +972,15 @@ async function uninstallWithTerminal(distroName, btn, card) {
 			});
 		});
 
-		activeTerminals.delete(distroName);
-
-		const { errno, stdout } = await exec("JOSINIFY=true chroot-distro list");
-		let removeSuccess = false;
-
-		if (errno === 0 && stdout) {
-			const data = JSON.parse(stdout.trim());
-			const distroInfo = data.distributions?.find((d) => d.name === distroName);
-			removeSuccess = distroInfo?.installed === false;
+		if (activeWatchers.has(distroName)) {
+			clearInterval(activeWatchers.get(distroName));
+			activeWatchers.delete(distroName);
+			const { stdout } = await exec(`cat "${logPath}"`);
+			if (stdout) appendTerminalLine(terminalOutput, stdout);
 		}
 
-		if (btnIcon) btnIcon.classList.remove("shake-anim"); // Stop animation
-
-		if (removeSuccess) {
-			terminalTitle.textContent = `${distroName} removed successfully!`;
-			terminalTitle.style.color = "#4ade80";
-			appendTerminalLine(terminalOutput, "", "success");
-			appendTerminalLine(terminalOutput, "✓ Removal completed successfully!", "success");
-
-			showToast(`${distroName} removed successfully!`);
-
-			setTimeout(async () => {
-				terminal.classList.remove("open");
-				await refreshDistroCard(distroName, card);
-			}, 2000);
-		} else {
-			terminalTitle.textContent = `Removal failed (exit code: ${exitCode})`;
-			terminalTitle.style.color = "#e94560";
-			appendTerminalLine(terminalOutput, "", "error");
-			appendTerminalLine(terminalOutput, `✗ Removal failed with exit code ${exitCode}`, "error");
-
-			showToast("Removal failed", true);
-			closeBtn.disabled = false;
-			btn.disabled = false;
-			if (startBtn) startBtn.disabled = false;
-		}
+		await handleTaskCompletion(distroName, "uninstall", card, terminal, terminalTitle, terminalOutput, btn, closeBtn);
+		if (btnIcon) btnIcon.classList.remove("shake-anim");
 	} catch (e) {
 		console.error("Uninstall error:", e);
 		if (btnIcon) btnIcon.classList.remove("shake-anim"); // Stop animation
@@ -811,23 +992,9 @@ async function uninstallWithTerminal(distroName, btn, card) {
 		showToast(e.message, true);
 		closeBtn.disabled = false;
 		btn.disabled = false;
+		removeActiveTask(distroName);
 		if (startBtn) startBtn.disabled = false;
 	}
-}
-
-/**
- * Append line to terminal output
- * @param {HTMLElement} output
- * @param {string} text
- * @param {string} type
- */
-function appendTerminalLine(output, text, type = "") {
-	const line = document.createElement("div");
-	line.className = `terminal-line ${type}`;
-	line.textContent = text;
-	output.appendChild(line);
-
-	output.scrollTop = output.scrollHeight;
 }
 
 /**
@@ -940,6 +1107,7 @@ async function loadDistros() {
 		} else {
 			renderDistros(allDistros);
 		}
+		await syncActiveTasksUI();
 	} catch (e) {
 		console.error("Failed to load distributions:", e);
 		renderError("Failed to load distributions. Make sure chroot-distro is installed.");
@@ -994,4 +1162,3 @@ async function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
-
