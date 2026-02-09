@@ -231,8 +231,9 @@ the Free Software Foundation, either version 3 of the License, or
 
 Special thanks to:
 
-- [LinuxDroidMaster/Termux-Desktops](https://github.com/LinuxDroidMaster/Termux-Desktops)
-- [phoenixbyrd/Termux_XFCE](https://github.com/phoenixbyrd/Termux_XFCE)
+- [proot-distro](https://github.com/termux/proot-distro)
+- [Magisk-Modules-Alt-Repo/chroot-distro](https://github.com/Magisk-Modules-Alt-Repo/chroot-distro)
+- [ravindu644/Ubuntu-Chroot](https://github.com/ravindu644/Ubuntu-Chroot)
 
 ---
 
