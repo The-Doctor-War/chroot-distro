@@ -1,5 +1,16 @@
 # Changelog
 
+### v1.5.1
+
+- swap(chroot-distro): remove awk-jq and add a simple regex inside chroot-distro
+- fix(Readme): fix acknowledgments links
+- feat(webui): implement log persistence
+- fix(chroot-distro): check for /etc folder to consider a distro is fully installed
+- feat(webui): only make the middle section scroll
+- feat(ci/checkup-and-release): add a option always bbuild a artifact also now use a build.sh to build the module
+- style: cleanup
+- docs: update readme
+
 ### v1.5.0
 
 - feat(ci/checkup-and-release): generate log only from last numbered tag
