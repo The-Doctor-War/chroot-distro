@@ -40,6 +40,30 @@ jobs:
       run: |
         set -e
 
+        # Enable parallel compression
+        export XZ_OPT="-T0"
+
+        # Function to inject serviced.py into the rootfs
+        inject_serviced() {
+          local archive="$1"
+          local temp_root=$(mktemp -d)
+
+          echo "Injecting serviced.py into $archive..." >&2
+
+          # Extract archive
+          tar -xf "$archive" -C "$temp_root"
+
+          # Inject serviced
+          mkdir -p "$temp_root/bin"
+          cp tools/serviced.py "$temp_root/bin/serviced"
+          chmod 755 "$temp_root/bin/serviced"
+
+          # Repack archive
+          tar -C "$temp_root" -cJf "$archive" .
+
+          rm -rf "$temp_root"
+        }
+
         # Function to extract version from /etc/os-release in archive
         extract_version() {
           local archive="$1"
@@ -157,6 +181,9 @@ jobs:
             # Process aarch64
             temp_output="releases/kali-temp-aarch64.tar.xz"
             if download_and_process "http://kali.download/nethunter-images/current/rootfs/kali-nethunter-rootfs-minimal-arm64.tar.xz" "$temp_output"; then
+              # Inject serviced.py
+              inject_serviced "$temp_output"
+
               # Extract version
               version=$(extract_version "$temp_output")
               echo "Extracted version: $version"
@@ -189,6 +216,7 @@ jobs:
             # Process arm
             temp_output="releases/kali-temp-arm.tar.xz"
             if download_and_process "http://kali.download/nethunter-images/current/rootfs/kali-nethunter-rootfs-minimal-armhf.tar.xz" "$temp_output"; then
+              inject_serviced "$temp_output"
               version=$(extract_version "$temp_output")
               if [[ -z "$DISTRO_VERSION" ]]; then
                 DISTRO_VERSION="$version"
@@ -262,6 +290,9 @@ jobs:
               echo "Found $arch: $url"
 
               if download_and_process "$url" "$temp_output"; then
+                # Inject serviced.py
+                inject_serviced "$temp_output"
+
                 # Extract version
                 version=$(extract_version "$temp_output")
                 echo "Extracted version for $DISTRO_DISPLAY_NAME: $version"
