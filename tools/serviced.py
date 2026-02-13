@@ -133,22 +133,17 @@ CRITICAL_PREFIXES = (
 )
 
 VERBOSE = False
-QUIET = False
-
 
 def log_info(msg, *args):
-    if not QUIET:
-        print("[INFO]", msg % args if args else msg)
+    print("[INFO]", msg % args if args else msg)
 
 
 def log_warn(msg, *args):
-    if not QUIET:
-        print("[WARN]", msg % args if args else msg, file=sys.stderr)
+    print("[WARN]", msg % args if args else msg, file=sys.stderr)
 
 
 def log_error(msg, *args):
-    if not QUIET:
-        print("[ERROR]", msg % args if args else msg, file=sys.stderr)
+    print("[ERROR]", msg % args if args else msg, file=sys.stderr)
 
 
 def log_debug(msg, *args):
@@ -1124,8 +1119,6 @@ class ServiceManager:
 
     def start_all_enabled(self):
         """Start all enabled services with a boot-style log."""
-        global QUIET
-
         if not os.path.isdir(ENABLED_DIR):
             print("No enabled services found.")
             return
@@ -1135,20 +1128,16 @@ class ServiceManager:
             print("No enabled services.")
             return
 
-        QUIET = True
-        try:
-            for name in enabled:
-                if not name.endswith(".service"):
-                    continue
+        for name in enabled:
+            if not name.endswith(".service"):
+                continue
 
-                success = self.start(name)
+            success = self.start(name)
 
-                if success:
-                    print("[\033[32m  OK  \033[0m] Started %s." % name)
-                else:
-                    print("[\033[31mFAILED\033[0m] Failed to start %s." % name)
-        finally:
-            QUIET = False
+            if success:
+                print("[\033[32m  OK  \033[0m] Started %s." % name)
+            else:
+                print("[\033[31mFAILED\033[0m] Failed to start %s." % name)
 
     def status(self, name):
         """Get and print status of a service."""
@@ -1361,7 +1350,7 @@ Examples:
     if args.command == "start":
         if args.service:
             success = mgr.start(args.service)
-            if not VERBOSE and not QUIET:
+            if not VERBOSE:
                 if success:
                     print("[\033[32m  OK  \033[0m] Started %s." % args.service)
                 else:
@@ -1372,7 +1361,7 @@ Examples:
             mgr.start_all_enabled()
     elif args.command == "stop":
         success = mgr.stop(args.service)
-        if not VERBOSE and not QUIET:
+        if not VERBOSE:
             if success:
                 print("[\033[32m  OK  \033[0m] Stopped %s." % args.service)
             else:
@@ -1382,7 +1371,7 @@ Examples:
     elif args.command == "restart":
         mgr.stop(args.service)
         success = mgr.start(args.service)
-        if not VERBOSE and not QUIET:
+        if not VERBOSE:
             if success:
                 print("[\033[32m  OK  \033[0m] Restarted %s." % args.service)
             else:
