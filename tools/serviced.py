@@ -142,11 +142,13 @@ def log_info(msg, *args):
 
 
 def log_warn(msg, *args):
-    print("[WARN]", msg % args if args else msg, file=sys.stderr)
+    if not QUIET:
+        print("[WARN]", msg % args if args else msg, file=sys.stderr)
 
 
 def log_error(msg, *args):
-    print("[ERROR]", msg % args if args else msg, file=sys.stderr)
+    if not QUIET:
+        print("[ERROR]", msg % args if args else msg, file=sys.stderr)
 
 
 def log_debug(msg, *args):
@@ -1133,23 +1135,18 @@ class ServiceManager:
             print("No enabled services.")
             return
 
-        print("Starting enabled services...")
-
         QUIET = True
         try:
             for name in enabled:
                 if not name.endswith(".service"):
                     continue
 
-                unit = self.get_unit(name)
-                desc = unit.description if unit else name
-
                 success = self.start(name)
 
                 if success:
-                    print("[\033[32m  OK  \033[0m] Started %s." % desc)
+                    print("[\033[32m  OK  \033[0m] Started %s." % name)
                 else:
-                    print("[\033[31mFAILED\033[0m] Failed to start %s." % desc)
+                    print("[\033[31mFAILED\033[0m] Failed to start %s." % name)
         finally:
             QUIET = False
 

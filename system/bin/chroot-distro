@@ -1985,6 +1985,15 @@ command_login() {
 	# Docker Configuration
 	configure_docker_runtime "$distro_name"
 
+	# Start enabled services if SERVICED=true
+	if [ "${SERVICED}" = "true" ]; then
+		if [ -x "${INSTALLED_ROOTFS_DIR}/${distro_name}/bin/serviced" ]; then
+			run_chroot_cmd /bin/serviced start
+		else
+			msg "${YELLOW}Warning: serviced not found at /bin/serviced, skipping service start${RST}"
+		fi
+	fi
+
 	set -- "$@" /bin/su -P - "$login_user" -s "$login_shell"
 
 	# Add command execution / login flag
