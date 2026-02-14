@@ -53,13 +53,35 @@ jobs:
           # Extract archive (with sudo to handle strict permissions)
           sudo tar -xf "$archive" -C "$temp_root"
 
-          # Inject serviced
-          sudo mkdir -p "$temp_root/bin"
-          sudo cp tools/serviced.py "$temp_root/bin/serviced"
-          sudo chmod 755 "$temp_root/bin/serviced"
+          # Detect rootfs directory
+          local found_root=""
+          # Find all 'etc' directories, sort by path length (shortest first) to find the top-level etc
+          while IFS= read -r etc_dir; do
+            local parent_dir=$(dirname "$etc_dir")
+            # Check for bin (dir or symlink) or usr/bin
+            if [[ -d "$parent_dir/bin" || -L "$parent_dir/bin" || -d "$parent_dir/usr/bin" ]]; then
+               found_root="$parent_dir"
+               echo "Found rootfs at: $found_root" >&2
+               break
+            fi
+          done < <(find "$temp_root" -type d -name "etc" | awk '{ print length, $0 }' | sort -n | cut -d" " -f2-)
 
-          # Repack archive
-          sudo XZ_OPT="$XZ_OPT" tar -C "$temp_root" -cJf "$archive" .
+          # Fallback if not detected
+          if [[ -z "$found_root" ]]; then
+             echo "Warning: Could not detect rootfs structure. Injecting into archive root." >&2
+             found_root="$temp_root"
+          fi
+
+          # Inject serviced
+          if [[ ! -d "$found_root/usr/bin" ]]; then
+            sudo mkdir -p "$found_root/usr/bin"
+          fi
+
+          sudo cp tools/serviced.py "$found_root/usr/bin/serviced"
+          sudo chmod 755 "$found_root/usr/bin/serviced"
+
+          # Repack archive from the found root to eliminate top-level directory if present
+          sudo XZ_OPT="$XZ_OPT" tar -C "$found_root" -cJf "$archive" .
 
           # Restore ownership to runner user
           sudo chown $(id -u):$(id -g) "$archive"
