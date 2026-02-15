@@ -181,15 +181,17 @@ jobs:
 
           echo "📝 Generating changelog..."
 
-          # Get commits since last tag (excluding release and chore commits)
+          # Get commits since last tag (excluding release, chore, and bot commits)
           if [ -z "$LAST_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"%s" HEAD)
+            COMMITS=$(git log --pretty=format:"%an|%s" HEAD)
           else
-            COMMITS=$(git log --pretty=format:"%s" ${LAST_TAG}..HEAD)
+            COMMITS=$(git log --pretty=format:"%an|%s" ${LAST_TAG}..HEAD)
           fi
 
           # Filter and format commits
           FORMATTED_COMMITS=$(echo "$COMMITS" | \
+            grep -v "^github-actions\[bot\]|" | \
+            sed 's/^[^|]*|//' | \
             grep -v "^release:" | \
             grep -v "^chore: update files for release" | \
             grep -v "^\s*$" | \
