@@ -84,6 +84,16 @@
       ],
       "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/ubuntu/ubuntu-aarch64-questing.tar.xz",
       "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/ubuntu/ubuntu-arm-questing.tar.xz"
+    },
+    {
+      "name": "void",
+      "version": "20250202",
+      "supported_arch": [
+        "aarch64",
+        "arm"
+      ],
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/void/void-aarch64-20250202.tar.xz",
+      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/void/void-arm-20250202.tar.xz"
     }
   ]
 }
