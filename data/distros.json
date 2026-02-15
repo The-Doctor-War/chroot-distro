@@ -30,6 +30,15 @@
       "arm_url": ""
     },
     {
+      "name": "kali",
+      "version": "2025.4",
+      "supported_arch": [
+        "aarch64"
+      ],
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/kali/kali-aarch64-2025.4.tar.xz",
+      "arm_url": ""
+    },
+    {
       "name": "manjaro",
       "version": "20251208",
       "supported_arch": [
