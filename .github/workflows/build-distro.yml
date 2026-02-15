@@ -2,13 +2,16 @@ name: build distro
 
 on:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/build-distro.yml'
+      - '.github/actions/**'
       - 'distro-build/*.sh'
       - 'bootstrap-rootfs.sh'
   pull_request:
     paths:
       - '.github/workflows/build-distro.yml'
+      - '.github/actions/**'
       - 'distro-build/*.sh'
       - 'bootstrap-rootfs.sh'
   workflow_dispatch:
@@ -16,6 +19,13 @@ on:
       distributions:
         description: 'Space-separated values of distributions to build (e.g. "ubuntu debian")'
         required: true
+
+concurrency:
+  group: build-distro-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   # Architectures to skip (space-separated, passed to bootstrap-rootfs.sh)
