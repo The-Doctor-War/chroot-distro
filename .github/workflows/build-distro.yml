@@ -21,8 +21,8 @@ on:
         required: true
 
 concurrency:
-  group: build-distro-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: build-distro-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
