@@ -22,13 +22,13 @@
     },
     {
       "name": "debian",
-      "version": "trixie",
+      "version": "13.3",
       "supported_arch": [
         "aarch64",
         "arm"
       ],
-      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/debian/debian-aarch64-trixie.tar.xz",
-      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/debian/debian-arm-trixie.tar.xz"
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/debian/debian-aarch64-13.3.tar.xz",
+      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/debian/debian-arm-13.3.tar.xz"
     },
     {
       "name": "fedora",
@@ -77,23 +77,23 @@
     },
     {
       "name": "trisquel",
-      "version": "aramo",
+      "version": "11.0",
       "supported_arch": [
         "aarch64",
         "arm"
       ],
-      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-aarch64-aramo.tar.xz",
-      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-arm-aramo.tar.xz"
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-aarch64-11.0.tar.xz",
+      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-arm-11.0.tar.xz"
     },
     {
       "name": "ubuntu",
-      "version": "questing",
+      "version": "25.10",
       "supported_arch": [
         "aarch64",
         "arm"
       ],
-      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/ubuntu/ubuntu-aarch64-questing.tar.xz",
-      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/ubuntu/ubuntu-arm-questing.tar.xz"
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/ubuntu/ubuntu-aarch64-25.10.tar.xz",
+      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/ubuntu/ubuntu-arm-25.10.tar.xz"
     },
     {
       "name": "void",
