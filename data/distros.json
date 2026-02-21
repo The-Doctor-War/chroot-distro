@@ -12,13 +12,13 @@
     },
     {
       "name": "archlinux",
-      "version": "2025.12.01",
+      "version": "2026.02.01",
       "supported_arch": [
         "aarch64",
         "arm"
       ],
-      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/archlinux/archlinux-aarch64-2025.12.01.tar.xz",
-      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/archlinux/archlinux-arm-2025.12.01.tar.xz"
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/archlinux/archlinux-aarch64-2026.02.01.tar.xz",
+      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/archlinux/archlinux-arm-2026.02.01.tar.xz"
     },
     {
       "name": "debian",
@@ -50,11 +50,11 @@
     },
     {
       "name": "manjaro",
-      "version": "20251208",
+      "version": "20260216",
       "supported_arch": [
         "aarch64"
       ],
-      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/manjaro/manjaro-aarch64-20251208.tar.xz",
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/manjaro/manjaro-aarch64-20260216.tar.xz",
       "arm_url": ""
     },
     {
@@ -77,13 +77,13 @@
     },
     {
       "name": "trisquel",
-      "version": "11.0",
+      "version": "12.0",
       "supported_arch": [
         "aarch64",
         "arm"
       ],
-      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-aarch64-11.0.tar.xz",
-      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-arm-11.0.tar.xz"
+      "aarch64_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-aarch64-12.0.tar.xz",
+      "arm_url": "https://github.com/sabamdarif/chroot-distro/releases/download/trisquel/trisquel-arm-12.0.tar.xz"
     },
     {
       "name": "ubuntu",
