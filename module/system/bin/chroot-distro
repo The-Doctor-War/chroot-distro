@@ -1948,12 +1948,14 @@ command_login() {
 
 	if [ -n "$DEVICE_BLOCK" ]; then
 		# Remount with dev and suid options
-		busybox mount -o remount,dev,suid,exec "$DEVICE_BLOCK" /data 2>/dev/null || {
+		busybox mount -o remount,dev,suid,exec "$DEVICE_BLOCK" /data 2>/dev/null || \
+		busybox mount -o remount,suid "$DEVICE_BLOCK" /data 2>/dev/null || {
 			msg "${YELLOW}Warning: failed to enable SUID/exec on /data (remount failed)${RST}"
 		}
 	else
 		# Fallback: try remounting /data without specifying device (some Android versions might allow this)
-		busybox mount -o remount,dev,suid,exec /data 2>/dev/null || {
+		busybox mount -o remount,dev,suid,exec /data 2>/dev/null || \
+		busybox mount -o remount,suid /data 2>/dev/null || {
 			msg "${YELLOW}Warning: failed to enable SUID/exec on /data (could not find device)${RST}"
 		}
 	fi
