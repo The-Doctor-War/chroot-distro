@@ -690,6 +690,97 @@ function closeTerminal(distroName, card) {
 	}
 }
 
+// ── User Setup Modal ──────────────────────────────────────────────────
+
+let pendingInstall = null; // { distroName, btn, card }
+
+/**
+ * Escape a string for safe use inside single-quoted shell arguments.
+ * Replaces every ' with '\'' (end quote, escaped quote, reopen quote).
+ * @param {string} str
+ * @returns {string}
+ */
+function shellEscape(str) {
+	return str.replace(/'/g, "'\\''");
+}
+
+/**
+ * Show the user-setup modal before installing a distro.
+ * @param {string} distroName
+ * @param {HTMLButtonElement} btn
+ * @param {HTMLElement} card
+ */
+function showUserSetupModal(distroName, btn, card) {
+	pendingInstall = { distroName, btn, card };
+
+	const modal = document.getElementById("user-setup-modal");
+	const form = document.getElementById("user-setup-form");
+	form.reset();
+
+	// Clear previous errors
+	document.getElementById("username-error").textContent = "";
+	document.getElementById("password-error").textContent = "";
+	document.getElementById("confirm-password-error").textContent = "";
+
+	modal.classList.add("open");
+}
+
+/**
+ * Close the user-setup modal and clear pending state.
+ */
+function closeUserSetupModal() {
+	const modal = document.getElementById("user-setup-modal");
+	modal.classList.remove("open");
+	pendingInstall = null;
+}
+
+/**
+ * Validate the user setup form and start installation.
+ * @param {Event} e - form submit event
+ */
+async function validateAndInstall(e) {
+	e.preventDefault();
+
+	const username = document.getElementById("setup-username").value.trim();
+	const password = document.getElementById("setup-password").value;
+	const confirmPassword = document.getElementById("setup-confirm-password").value;
+
+	const usernameError = document.getElementById("username-error");
+	const passwordError = document.getElementById("password-error");
+	const confirmError = document.getElementById("confirm-password-error");
+
+	// Reset errors
+	usernameError.textContent = "";
+	passwordError.textContent = "";
+	confirmError.textContent = "";
+
+	let valid = true;
+
+	if (!username) {
+		usernameError.textContent = "Username is required";
+		valid = false;
+	} else if (/\s/.test(username)) {
+		usernameError.textContent = "Username must not contain spaces";
+		valid = false;
+	}
+
+	if (!password) {
+		passwordError.textContent = "Password is required";
+		valid = false;
+	}
+
+	if (password !== confirmPassword) {
+		confirmError.textContent = "Passwords do not match";
+		valid = false;
+	}
+
+	if (!valid || !pendingInstall) return;
+
+	const { distroName, btn, card } = pendingInstall;
+	closeUserSetupModal();
+	await installWithTerminal(distroName, btn, card, username, password);
+}
+
 /**
  * Handle action based on action type
  * @param {string} distroName
@@ -710,7 +801,7 @@ async function handleAction(distroName, action, btn, card) {
 			break;
 
 		case "install":
-			await installWithTerminal(distroName, btn, card);
+			showUserSetupModal(distroName, btn, card);
 			break;
 
 		case "stop":
@@ -840,8 +931,10 @@ async function stopWithTerminal(distroName, btn, card) {
  * @param {string} distroName
  * @param {HTMLButtonElement} btn
  * @param {HTMLElement} card
+ * @param {string} [username] - optional username for --adduser
+ * @param {string} [password] - optional password for --adduser
  */
-async function installWithTerminal(distroName, btn, card) {
+async function installWithTerminal(distroName, btn, card, username, password) {
 	const terminal = card.querySelector(`#terminal-${distroName}`);
 	const terminalOutput = terminal.querySelector(".terminal-output");
 	const terminalTitle = terminal.querySelector(".terminal-title span");
@@ -864,7 +957,15 @@ async function installWithTerminal(distroName, btn, card) {
 		terminal.scrollIntoView({ behavior: "smooth", block: "nearest" });
 	}, 100);
 
-	appendTerminalLine(terminalOutput, `$ chroot-distro install ${distroName}`);
+	// Build install command with optional --adduser
+	let installCmd = `chroot-distro install ${distroName}`;
+	let displayCmd = installCmd;
+	if (username && password) {
+		installCmd += ` --adduser '${shellEscape(username)}' '${shellEscape(password)}'`;
+		displayCmd += ` --adduser ${username} ********`;
+	}
+
+	appendTerminalLine(terminalOutput, `$ ${displayCmd}`);
 	appendTerminalLine(terminalOutput, "");
 
 	try {
@@ -874,7 +975,7 @@ async function installWithTerminal(distroName, btn, card) {
 		saveActiveTask(distroName, "install");
 
 		const scriptPath = `${LOG_DIR}/${distroName}_install.sh`;
-		await exec(`echo 'chroot-distro install ${distroName} > "${logPath}" 2>&1' > "${scriptPath}" && chmod +x "${scriptPath}"`);
+		await exec(`echo '${installCmd} > "${logPath}" 2>&1' > "${scriptPath}" && chmod +x "${scriptPath}"`);
 
 		const process = spawn("sh", [scriptPath]);
 
@@ -1297,7 +1398,6 @@ async function saveSetting(key, value) {
 
 	try {
 		await exec(cmd);
-		// showToast("Settings saved"); // Optional: might be too noisy for every toggle
 	} catch (e) {
 		console.error("Failed to save setting:", e);
 		showToast("Failed to save settings", true);
@@ -1329,6 +1429,20 @@ async function init() {
 			if (e.target === helpModal) helpModal.classList.remove("open");
 		});
 	if (clearCacheBtn) clearCacheBtn.addEventListener("click", clearCache);
+
+	// User setup modal events
+	const userSetupModal = document.getElementById("user-setup-modal");
+	const userSetupForm = document.getElementById("user-setup-form");
+	const closeUserSetupBtn = document.getElementById("close-user-setup-modal");
+	const userSetupCancelBtn = document.getElementById("user-setup-cancel");
+
+	if (userSetupForm) userSetupForm.addEventListener("submit", validateAndInstall);
+	if (closeUserSetupBtn) closeUserSetupBtn.addEventListener("click", closeUserSetupModal);
+	if (userSetupCancelBtn) userSetupCancelBtn.addEventListener("click", closeUserSetupModal);
+	if (userSetupModal)
+		userSetupModal.addEventListener("click", (e) => {
+			if (e.target === userSetupModal) closeUserSetupModal();
+		});
 
 	if (searchBtn) {
 		searchBtn.addEventListener("click", () => toggleSearch(true));
@@ -1384,14 +1498,7 @@ function updateVerboseToggleState(enabled) {
 		} else {
 			card.classList.add("disabled");
 			toggle.disabled = true;
-			toggle.checked = false; // Optional: uncheck when disabled
-			// Note: We might want to save the unchecked state or keep the setting as is but visually disabled.
-			// For now, let's just disable the UI. If we uncheck, we should probably save it too?
-			// The user requirement said "only be clickable", implying visual disablement.
-			// Let's keep the value (setting) as is, just disable interaction.
-			// CORRECTION: If we don't uncheck it visually, it might look confusing if it was on.
-			// However, if we uncheck it here, we don't save it to file unless we call saveSetting.
-			// Let's keep it simple: just disable interaction. The shell script handles the logic (if SERVICED=false, VERBOSE is ignored).
+			toggle.checked = false;
 		}
 	}
 }

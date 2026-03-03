@@ -142,6 +142,39 @@
 			</div>
 		</div>
 
+		<!-- User Setup Modal -->
+		<div class="modal-overlay" id="user-setup-modal">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h3>Set Up User</h3>
+					<button class="modal-close-btn" id="close-user-setup-modal">✕</button>
+				</div>
+				<div class="modal-body">
+					<form class="user-setup-form" id="user-setup-form" autocomplete="off">
+						<div class="form-group">
+							<label class="form-label" for="setup-username">Username</label>
+							<input type="text" class="form-input" id="setup-username" placeholder="Enter username" autocomplete="off" />
+							<span class="form-error" id="username-error"></span>
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="setup-password">Password</label>
+							<input type="password" class="form-input" id="setup-password" placeholder="Enter password" autocomplete="new-password" />
+							<span class="form-error" id="password-error"></span>
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="setup-confirm-password">Confirm Password</label>
+							<input type="password" class="form-input" id="setup-confirm-password" placeholder="Confirm password" autocomplete="new-password" />
+							<span class="form-error" id="confirm-password-error"></span>
+						</div>
+						<div class="form-actions">
+							<button type="button" class="form-btn form-btn-secondary ripple-element" id="user-setup-cancel">Cancel</button>
+							<button type="submit" class="form-btn form-btn-primary ripple-element" id="user-setup-continue">Continue</button>
+						</div>
+					</form>
+				</div>
+			</div>
+		</div>
+
 		<!-- Footer -->
 		<footer class="footer">
 			<button class="footer-btn active ripple-element" id="nav-home">
