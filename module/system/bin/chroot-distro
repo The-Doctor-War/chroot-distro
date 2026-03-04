@@ -821,10 +821,11 @@ run_chroot_cmd() {
 	busybox mkdir -p "${distro_path}/proc"
 	busybox mkdir -p "${distro_path}/sys"
 
-	# Mount essential filesystems if not already mounted
-	safe_mount "/dev" "${distro_path}/dev" "$distro_name"
-	safe_mount "/proc" "${distro_path}/proc" "$distro_name"
-	safe_mount "/sys" "${distro_path}/sys" "$distro_name"
+	# Use direct mounts (not safe_mount) since these are temporary and will be
+	# unmounted right after the command completes - avoids polluting mount.points tracker
+	busybox mount | busybox grep -q " on ${distro_path}/dev " || busybox mount --bind /dev "${distro_path}/dev" 2>/dev/null || true
+	busybox mount | busybox grep -q " on ${distro_path}/proc " || busybox mount --bind /proc "${distro_path}/proc" 2>/dev/null || true
+	busybox mount | busybox grep -q " on ${distro_path}/sys " || busybox mount --bind /sys "${distro_path}/sys" 2>/dev/null || true
 
 	# Execute command in chroot
 	busybox chroot "$distro_path" /usr/bin/env -i \
@@ -1152,7 +1153,8 @@ command_install() {
 	# Mount /dev immediately so :- cannot create /dev/null: Permission defined
 	# doesn't happened
 	busybox mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
-	safe_mount "/dev" "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev" "$distro_name"
+	# Use direct mount (not safe_mount) - this is temporary and unmounted after setup
+	busybox mount | busybox grep -q " on ${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev " || busybox mount --bind /dev "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev" 2>/dev/null || true
 
 	# Write important environment variables to /etc/environment.
 	busybox chmod u+rw "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/etc/environment" >/dev/null 2>&1 || true
@@ -1411,7 +1413,8 @@ command_install() {
 			TUID=$(busybox stat -c '%u' /data/data/com.termux)
 
 			busybox mkdir -p "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev"
-			safe_mount "/dev" "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev" "$distro_name"
+			# Use direct mount (not safe_mount) - this is temporary and unmounted after user creation
+			busybox mount | busybox grep -q " on ${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev " || busybox mount --bind /dev "${INSTALLED_ROOTFS_DIR:?}/${distro_name:?}/dev" 2>/dev/null || true
 
 			if run_chroot_cmd /bin/sh -c "
 					groupadd -f storage 2>/dev/null || true
@@ -1449,6 +1452,11 @@ command_install() {
 			distro_setup
 		)
 	fi
+
+	# Clean up any stale mount tracker file from installation
+	# (safety net in case safe_mount was called indirectly)
+	mount_tracker_file=$(get_mount_tracker_file "$distro_name")
+	busybox rm -f "$mount_tracker_file"
 
 	# Update module description
 	sh "$MODDIR/status.sh"
