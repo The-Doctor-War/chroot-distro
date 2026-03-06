@@ -2,27 +2,6 @@
 """
 serviced.py - Lightweight service manager for systemd .service files
               Runs services as background processes without systemd.
-
-Designed for chroot environments and systems without systemd.
-
-Usage:
-    serviced.py <command> [options] [service]
-
-Commands:
-    start     <service>   Start a service
-    stop      <service>   Stop a service
-    restart   <service>   Restart a service
-    enable    <service>   Enable service to start on boot
-    disable   <service>   Disable service from starting on boot
-    status    <service>   Show service status
-    log       <service>   Show service log (last 50 lines)
-    list                  List all discovered services
-    list-running          List only currently running services
-
-Options:
-    --dry-run             Show what would be done without doing it
-    -v, --verbose         Show debug output
-    -n, --lines NUM       Number of log lines to show (default: 50)
 """
 
 from __future__ import print_function
@@ -41,13 +20,27 @@ import subprocess
 import sys
 import time
 
-VERSION = "0.1.6"
+VERSION = "0.1.7"
 
-UNIT_PATHS = [
+SYSTEM_UNIT_PATHS = [
     "/etc/systemd/system",
+    "/run/systemd/system",
+    "/var/run/systemd/system",
     "/usr/local/lib/systemd/system",
     "/usr/lib/systemd/system",
     "/lib/systemd/system",
+]
+
+USER_UNIT_PATHS = [
+    "{XDG_CONFIG_HOME}/systemd/user",
+    "/etc/systemd/user",
+    "{XDG_RUNTIME_DIR}/systemd/user",
+    "/run/systemd/user",
+    "/var/run/systemd/user",
+    "{XDG_DATA_HOME}/systemd/user",
+    "/usr/local/lib/systemd/user",
+    "/usr/lib/systemd/user",
+    "/lib/systemd/user",
 ]
 
 STATE_DIR = "/tmp/serviced"
@@ -60,38 +53,26 @@ ACTION_LOG_FILE = "/var/lib/serviced/serviced.log"
 
 SYSTEM_BUS_SOCKET = "/run/dbus/system_bus_socket"
 
-# Only services that are DANGEROUS to the host or truly IMPOSSIBLE
-# without a real init system / hardware access.
-#
-# With cgroupv2, /proc, /sys, /dev mounted, most systemd-* helpers
-# CAN work inside a chroot — so they are intentionally NOT listed.
 CRITICAL_SERVICES = {
-    # Would power off / reboot / suspend the HOST
     "systemd-halt",
     "systemd-poweroff",
     "systemd-reboot",
     "systemd-kexec",
     "systemd-suspend",
     "systemd-hibernate-resume",
-    # PID 1 — cannot run as a child process
     "init",
-    # Need real VT / console hardware
     "getty@tty1",
     "serial-getty@",
     "systemd-vconsole-setup",
-    # Need EFI firmware variables
     "systemd-boot-random-seed",
-    # Could destroy host filesystems from chroot
     "systemd-remount-fs",
     "systemd-growfs",
     "systemd-makefs",
-    # Kernel module loading (usually blocked in chroot)
     "systemd-modules-load",
 }
 
 UNSUPPORTED_TYPES = set()
 
-# Only block boot-phase prefixes that never make sense outside real boot.
 CRITICAL_PREFIXES = (
     "initrd-",
     "rescue.",
@@ -104,10 +85,44 @@ CRITICAL_PREFIXES = (
 
 VERBOSE = False
 
+HELP_TEXT = (
+    """\
+serviced [OPTIONS...] COMMAND ...
 
-# ======================================================================
-#  Logging helpers
-# ======================================================================
+Query or send control commands to services.
+Lightweight service manager for systemd .service files (v%s).
+
+Service Commands:
+  start UNIT...                       Start (activate) one or more units
+  stop UNIT...                        Stop (deactivate) one or more units
+  reload UNIT...                      Reload one or more units
+  restart UNIT...                     Start or restart one or more units
+  kill UNIT...                        Send signal to processes of a unit
+  status UNIT                         Show runtime status of a unit
+  cat UNIT...                         Show files and drop-ins of specified units
+  help UNIT...                        Show documentation of specified units
+  log UNIT                            Show service log (last N lines)
+
+Unit File Commands:
+  enable UNIT...                      Enable one or more unit files
+  disable UNIT...                     Disable one or more unit files
+  list                                List all discovered services
+  list-running                        List only currently running services
+
+Options:
+  -h --help                           Show this help
+     --version                        Show package version
+     --dry-run                        Show what would be done without doing it
+  -v --verbose                        Show debug output
+  -s --signal SIGNAL                  Signal to send (kill command, default: SIGTERM)
+     --kill-who WHO                   Who to send signal to (main|all, default: all)
+  -n --lines NUM                      Number of log lines to show (default: 50)
+     --user                           Talk to the service manager of the calling user
+
+See serviced list for available units.
+"""
+    % VERSION
+)
 
 
 def log_info(msg, *args):
@@ -137,9 +152,39 @@ def log_action(msg, *args):
         pass
 
 
-# ======================================================================
-#  Utility functions
-# ======================================================================
+def _xdg_defaults():
+    """Return XDG base directory defaults for the current user."""
+    home = os.path.expanduser("~")
+    uid = os.getuid()
+    return {
+        "XDG_CONFIG_HOME": os.environ.get(
+            "XDG_CONFIG_HOME", os.path.join(home, ".config")
+        ),
+        "XDG_DATA_HOME": os.environ.get(
+            "XDG_DATA_HOME", os.path.join(home, ".local", "share")
+        ),
+        "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % uid),
+    }
+
+
+def resolve_unit_paths(user_mode=False):
+    """Build the ordered list of unit search directories.
+    In user mode, XDG variables are expanded and user paths come first.
+    """
+    paths = []
+    if user_mode:
+        xdg = _xdg_defaults()
+        for tmpl in USER_UNIT_PATHS:
+            try:
+                resolved = tmpl.format(**xdg)
+            except KeyError:
+                continue
+            if resolved not in paths:
+                paths.append(resolved)
+    for p in SYSTEM_UNIT_PATHS:
+        if p not in paths:
+            paths.append(p)
+    return paths
 
 
 def ensure_dirs():
@@ -157,7 +202,6 @@ def is_critical_service(name):
         return True
     if name.startswith(CRITICAL_PREFIXES):
         return True
-    # Template units like foo@.service have no instance — skip them
     if "@." in name:
         return True
     return False
@@ -172,7 +216,6 @@ def pid_exists(pid):
         return False
     except PermissionError:
         return True
-    # Double-check via /proc to catch zombies
     try:
         with open("/proc/%d/status" % pid) as f:
             for line in f:
@@ -184,11 +227,6 @@ def pid_exists(pid):
 
 
 def is_socket_alive(path):
-    """Check if a unix socket has a listener (not stale).
-
-    Tries SOCK_STREAM first (most common), then SOCK_DGRAM.
-    Returns False if no process is accepting connections.
-    """
     if not os.path.exists(path):
         return False
     for stype in (socketmod.SOCK_STREAM, socketmod.SOCK_DGRAM):
@@ -203,14 +241,21 @@ def is_socket_alive(path):
     return False
 
 
-# ======================================================================
-#  Unit file parser
-# ======================================================================
+def resolve_signal(sig):
+    """Resolve signal name or number ('SIGTERM', 'TERM', '15') to int."""
+    if isinstance(sig, int):
+        return sig
+    s = sig.strip().upper()
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        pass
+    if not s.startswith("SIG"):
+        s = "SIG" + s
+    return getattr(signal, s, None)
 
 
 class UnitFile:
-    """Parses a systemd unit file (.service or .socket)."""
-
     def __init__(self, path=None):
         self.path = path
         self._data = {}
@@ -226,7 +271,6 @@ class UnitFile:
                 prev_line = ""
                 for raw_line in f:
                     line = raw_line.rstrip("\n")
-                    # Handle backslash line continuation
                     if line.endswith("\\"):
                         prev_line += line[:-1].strip() + " "
                         continue
@@ -248,7 +292,6 @@ class UnitFile:
                         value = value.strip()
                         if key not in self._data[section]:
                             self._data[section][key] = []
-                        # Empty value resets the key (systemd behaviour)
                         if value == "":
                             self._data[section][key] = []
                         else:
@@ -281,6 +324,10 @@ class UnitFile:
     @property
     def description(self):
         return self.get("Unit", "Description", os.path.basename(self.path or "unknown"))
+
+    @property
+    def documentation(self):
+        return self.getlist("Unit", "Documentation")
 
     @property
     def requires(self):
@@ -332,6 +379,10 @@ class UnitFile:
         return self.getlist("Service", "ExecStartPost")
 
     @property
+    def exec_reload(self):
+        return self.getlist("Service", "ExecReload")
+
+    @property
     def pid_file(self):
         return self.get("Service", "PIDFile", "")
 
@@ -370,33 +421,29 @@ class UnitFile:
         return self.get("Service", "BusName", "")
 
     @property
+    def kill_mode(self):
+        return self.get("Service", "KillMode", "control-group").lower()
+
+    @property
+    def kill_signal(self):
+        return self.get("Service", "KillSignal", "SIGTERM")
+
+    @property
     def sockets(self):
-        """Sockets= directive — which socket units this service uses."""
         val = self.get("Service", "Sockets", "")
         return val.split() if val else []
 
     @property
     def listen_stream(self):
-        """ListenStream= values from [Socket] section."""
         return self.getlist("Socket", "ListenStream")
 
     @property
     def socket_service(self):
-        """Service= directive from [Socket] section — explicit service link."""
         return self.get("Socket", "Service", "")
 
 
-# ======================================================================
-#  Command parsing helpers
-# ======================================================================
-
-
 def parse_exec_cmd(cmd_str):
-    """Parse a systemd ExecStart= line.
-
-    Handles prefix characters: '-' (ignore errors), '+!@:' (stripped).
-    Returns (check_errors, [cmd_parts]).
-    """
+    """Parse a systemd ExecStart= line, handling prefix chars like '-+!@:'."""
     cmd = cmd_str.strip()
     check_errors = True
     while cmd and cmd[0] in "-+!@:":
@@ -414,7 +461,6 @@ def parse_exec_cmd(cmd_str):
 
 
 def expand_env(cmd_parts, env):
-    """Expand $VAR and ${VAR} references in command arguments."""
     result = []
     for part in cmd_parts:
         expanded = part
@@ -433,7 +479,6 @@ def expand_env(cmd_parts, env):
 
 
 def strip_socket_activation(cmd_parts):
-    """Remove -H fd:// from command args (systemd socket activation)."""
     result = []
     skip_next = False
     for i, part in enumerate(cmd_parts):
@@ -456,22 +501,11 @@ def strip_socket_activation(cmd_parts):
 
 
 def strip_systemd_args(cmd_parts):
-    """Remove systemd-specific flags that are meaningless without systemd.
-
-    --address=systemd:    Receive listening socket from systemd.
-    --systemd-activation  Let systemd handle activation of helpers.
-
-    These are protocol-level flags used by any binary that speaks the
-    systemd socket-activation or bus-activation protocol.
-    """
     if not cmd_parts:
         return cmd_parts
     result = []
     for part in cmd_parts:
-        if part.startswith("--address=systemd:"):
-            log_debug("Stripping systemd arg: %s", part)
-            continue
-        if part == "--systemd-activation":
+        if part.startswith("--address=systemd:") or part == "--systemd-activation":
             log_debug("Stripping systemd arg: %s", part)
             continue
         result.append(part)
@@ -480,8 +514,7 @@ def strip_systemd_args(cmd_parts):
 
 def load_environment_file(path):
     """Load KEY=VALUE pairs from a systemd EnvironmentFile.
-
-    Paths prefixed with '-' are optional (no warning if missing).
+    Paths prefixed with '-' are optional.
     """
     env = {}
     optional = False
@@ -507,13 +540,7 @@ def load_environment_file(path):
     return env
 
 
-# ======================================================================
-#  Bus-name helpers (Type=dbus readiness detection)
-# ======================================================================
-
-
 def check_dbus_bus_name(bus_name, timeout=5.0):
-    """Check if a D-Bus bus name is registered on the system bus."""
     if not bus_name:
         return False
     try:
@@ -537,7 +564,6 @@ def check_dbus_bus_name(bus_name, timeout=5.0):
 
 
 def wait_for_dbus_name(bus_name, pid, timeout=10.0):
-    """Wait until a D-Bus bus name appears or the process dies."""
     if not bus_name:
         return True
     deadline = time.time() + timeout
@@ -551,28 +577,23 @@ def wait_for_dbus_name(bus_name, pid, timeout=10.0):
     return False
 
 
-# ======================================================================
-#  Service Manager
-# ======================================================================
-
-
 class ServiceManager:
-    def __init__(self, dry_run=False):
+    def __init__(self, dry_run=False, user_mode=False):
         self.dry_run = dry_run
-        self._units = {}  # name.service -> UnitFile
-        self._sockets = {}  # name.socket  -> UnitFile
+        self.user_mode = user_mode
+        self._unit_paths = resolve_unit_paths(user_mode)
+        self._units = {}
+        self._sockets = {}
         self._discovered = False
 
     def discover_services(self):
         """Scan unit directories for .service and .socket files.
-
-        First occurrence of a filename wins (higher-priority dirs first).
-        Symlinks to /dev/null are treated as masked (skipped).
+        First occurrence wins. Symlinks to /dev/null are masked.
         """
         if self._discovered:
             return
         seen = set()
-        for unit_dir in UNIT_PATHS:
+        for unit_dir in self._unit_paths:
             if not os.path.isdir(unit_dir):
                 continue
             for fname in sorted(os.listdir(unit_dir)):
@@ -603,7 +624,10 @@ class ServiceManager:
                     log_debug("Failed to load %s: %s", fpath, e)
         self._discovered = True
         log_debug(
-            "Discovered %d services, %d sockets", len(self._units), len(self._sockets)
+            "Discovered %d services, %d sockets from %d paths",
+            len(self._units),
+            len(self._sockets),
+            len(self._unit_paths),
         )
 
     def get_unit(self, name):
@@ -616,10 +640,6 @@ class ServiceManager:
         if not name.endswith(".service"):
             name += ".service"
         return name
-
-    # ------------------------------------------------------------------
-    #  PID / status / log file management
-    # ------------------------------------------------------------------
 
     def _pid_path(self, name):
         return os.path.join(PID_DIR, name + ".pid")
@@ -680,24 +700,7 @@ class ServiceManager:
         env.update(unit.environment)
         return env
 
-    # ------------------------------------------------------------------
-    #  Socket unit handling
-    #
-    #  Parses .socket unit files to dynamically discover:
-    #    - which directories to create
-    #    - what ownership to set
-    #    - which stale sockets to clean
-    #    - which provider service to auto-start
-    # ------------------------------------------------------------------
-
     def _find_related_sockets(self, name, unit):
-        """Find .socket units related to a .service unit.
-
-        Checks three sources:
-          1. Sockets= directive in [Service]
-          2. Requires=X.socket / Wants=X.socket in [Unit]
-          3. Name match: X.service -> X.socket
-        """
         self.discover_services()
         result = set()
         for s in unit.sockets:
@@ -714,21 +717,12 @@ class ServiceManager:
         return result
 
     def _get_socket_paths(self, socket_name):
-        """Get filesystem listen paths from a .socket unit.
-
-        Returns only unix-socket paths (starting with /).
-        TCP port numbers and abstract sockets are skipped.
-        """
         sock_unit = self._sockets.get(socket_name)
         if not sock_unit:
             return []
         return [v.strip() for v in sock_unit.listen_stream if v.strip().startswith("/")]
 
     def _find_service_for_socket(self, socket_name):
-        """Find which .service a .socket unit activates.
-
-        Checks Service= directive first, falls back to name match.
-        """
         sock_unit = self._sockets.get(socket_name)
         if sock_unit:
             explicit = sock_unit.socket_service
@@ -739,11 +733,6 @@ class ServiceManager:
         return socket_name.replace(".socket", ".service")
 
     def _build_socket_path_map(self):
-        """Map filesystem socket paths to (socket_name, service_name).
-
-        Scans every discovered .socket unit. Cached after first call.
-        Example: {'/run/dbus/system_bus_socket': ('dbus.socket', 'dbus.service')}
-        """
         if hasattr(self, "_socket_path_map"):
             return self._socket_path_map
         self.discover_services()
@@ -756,12 +745,6 @@ class ServiceManager:
         return self._socket_path_map
 
     def _ensure_socket_dirs(self, name, unit):
-        """Create directories, set ownership, and clean stale sockets
-        for all .socket units related to this service.
-
-        Works for dbus, postgres, docker, mysql — any service that
-        has a corresponding .socket unit.
-        """
         if self.dry_run:
             return
         for sock_name in self._find_related_sockets(name, unit):
@@ -774,7 +757,6 @@ class ServiceManager:
                     except OSError as e:
                         log_warn("Cannot create %s: %s (need root?)", parent, e)
                         continue
-                # Set ownership from the service's User=/Group=
                 svc_user = unit.user
                 if svc_user:
                     try:
@@ -803,7 +785,6 @@ class ServiceManager:
                         )
                     except OSError as e:
                         log_debug("chown %s failed: %s", parent, e)
-                # Remove stale socket left by crashed daemon
                 if os.path.exists(sock_path):
                     if is_socket_alive(sock_path):
                         log_debug("Socket %s is alive", sock_path)
@@ -815,15 +796,6 @@ class ServiceManager:
                             log_warn("Cannot remove stale socket %s: %s", sock_path, e)
 
     def _ensure_socket_services(self, name, unit):
-        """Ensure services that provide required sockets are running.
-
-        For any service with socket dependencies (Requires=X.socket,
-        Wants=X.socket) or implicit socket needs (BusName= implies
-        the D-Bus system bus socket), this discovers which socket
-        paths are needed, finds the provider service, and starts it.
-
-        Handles recursion via a guard set (_ensuring_sockets).
-        """
         if not hasattr(self, "_ensuring_sockets"):
             self._ensuring_sockets = set()
         if name in self._ensuring_sockets:
@@ -837,15 +809,11 @@ class ServiceManager:
     def _do_ensure_socket_services(self, name, unit):
         self.discover_services()
         needed = {}
-
-        # Explicit socket dependencies from Requires= / Wants=
         for dep in unit.requires + unit.wants:
             if dep.endswith(".socket") and dep in self._sockets:
                 paths = self._get_socket_paths(dep)
                 if paths:
                     needed[dep] = paths
-
-        # Implicit: BusName= or Type=dbus -> needs the system bus socket
         if unit.bus_name or unit.service_type == "dbus":
             if not (
                 os.path.exists(SYSTEM_BUS_SOCKET) and is_socket_alive(SYSTEM_BUS_SOCKET)
@@ -859,20 +827,16 @@ class ServiceManager:
                         if SYSTEM_BUS_SOCKET in self._get_socket_paths(sn):
                             needed.setdefault(sn, [SYSTEM_BUS_SOCKET])
                             break
-
         if not needed:
             return True
-
         all_ok = True
         for sock_name, paths in needed.items():
             if any(os.path.exists(p) and is_socket_alive(p) for p in paths):
                 log_debug("Socket %s already available", sock_name)
                 continue
-
             svc_name = self._find_service_for_socket(sock_name)
             if svc_name == name:
                 continue
-
             svc_unit = self.get_unit(svc_name)
             if not svc_unit:
                 log_warn(
@@ -880,7 +844,6 @@ class ServiceManager:
                 )
                 all_ok = False
                 continue
-
             svc_pid = self._read_pid(svc_name)
             if svc_pid and pid_exists(svc_pid):
                 found = False
@@ -898,7 +861,6 @@ class ServiceManager:
                     )
                     all_ok = False
                 continue
-
             log_info(
                 "Starting %s (provides socket %s needed by %s)...",
                 svc_name,
@@ -928,14 +890,8 @@ class ServiceManager:
         return all_ok
 
     def _fix_bus_activation_files(self, name, unit):
-        """Remove SystemdService= from D-Bus activation files.
-
-        When a .service file contains SystemdService=, dbus-daemon
-        delegates activation to systemd (which we don't have).
-        Removing that line makes dbus-daemon fall back to the Exec=
-        line for direct fork/exec activation.
-
-        Runs for every service with BusName= set.
+        """Remove SystemdService= from D-Bus activation files so
+        dbus-daemon falls back to direct Exec= activation.
         """
         if self.dry_run:
             return
@@ -963,9 +919,9 @@ class ServiceManager:
                     if bus_name in content or name.replace(".service", "") in fname:
                         new = (
                             "\n".join(
-                                l
-                                for l in content.splitlines()
-                                if not l.strip().startswith("SystemdService=")
+                                line
+                                for line in content.splitlines()
+                                if not line.strip().startswith("SystemdService=")
                             )
                             + "\n"
                         )
@@ -978,12 +934,7 @@ class ServiceManager:
                 except (IOError, OSError) as e:
                     log_debug("Error processing %s: %s", fpath, e)
 
-    # ------------------------------------------------------------------
-    #  Dependency resolution
-    # ------------------------------------------------------------------
-
     def _build_service_binary_map(self):
-        """Map binary names to service names for implicit dependency detection."""
         if hasattr(self, "_binary_map"):
             return self._binary_map
         self.discover_services()
@@ -1004,9 +955,6 @@ class ServiceManager:
         return bmap
 
     def _find_exec_dep_services(self, name, unit):
-        """Find implicit dependencies by scanning ExecStart command arguments
-        for references to binaries provided by other services.
-        """
         deps = set()
         cmds = unit.exec_start
         if not cmds:
@@ -1029,7 +977,6 @@ class ServiceManager:
 
     @staticmethod
     def _extract_binary_candidates(value):
-        """Extract possible binary/service names from a path-like value."""
         candidates = set()
         basename = os.path.basename(value)
         if basename:
@@ -1052,7 +999,6 @@ class ServiceManager:
         return candidates
 
     def _find_reverse_dependents(self, name):
-        """Find services that declare PartOf= or BindsTo= this service."""
         self.discover_services()
         dependents = set()
         for svc_name, svc_unit in self._units.items():
@@ -1065,12 +1011,6 @@ class ServiceManager:
         return dependents
 
     def _collect_stop_dependencies(self, name, unit):
-        """Collect services that should be stopped when 'name' stops.
-
-        Includes Requires=, Wants=, BindsTo=, reverse PartOf/BindsTo,
-        and implicit exec dependencies. Filters out critical services
-        and services still needed by other running services.
-        """
         all_deps = set()
         for dep in unit.requires + unit.wants + unit.binds_to:
             if dep.endswith(".service"):
@@ -1091,7 +1031,6 @@ class ServiceManager:
             if self._is_needed_by_others(dep, exclude={name}):
                 continue
             safe.append(dep)
-        # Reverse dependents first (they depend on us, stop them first)
         ordered = []
         for dep in safe:
             if dep in reverse_deps:
@@ -1101,7 +1040,6 @@ class ServiceManager:
         return ordered
 
     def _is_needed_by_others(self, dep_name, exclude=None):
-        """Check if any other running service depends on dep_name."""
         exclude = exclude or set()
         self.discover_services()
         for svc_name, svc_unit in self._units.items():
@@ -1118,16 +1056,7 @@ class ServiceManager:
                 return True
         return False
 
-    # ------------------------------------------------------------------
-    #  Process management
-    # ------------------------------------------------------------------
-
     def _pkill_service(self, name, unit):
-        """Kill any existing instance of a service before (re)starting.
-
-        Kills tracked PID first, then uses pkill on the binary name
-        as a fallback, then kills dependency processes.
-        """
         pid = self._read_pid(name)
         if pid and pid_exists(pid):
             log_debug("Killing tracked PID %d for %s", pid, name)
@@ -1152,7 +1081,6 @@ class ServiceManager:
         if not cmd_parts:
             return
         binary = os.path.basename(cmd_parts[0])
-        # Don't pkill interpreters — would kill unrelated scripts
         if binary in ("bash", "sh", "python", "python3", "perl", "ruby"):
             return
         log_debug("Attempting pkill for '%s'", binary)
@@ -1184,12 +1112,6 @@ class ServiceManager:
                     self._write_status(dep_name, "inactive")
 
     def _run_cmd(self, cmd_str, env, unit, wait=True, log_file=None):
-        """Execute a parsed ExecStart/ExecStartPre/ExecStop command.
-
-        If wait=True, runs synchronously and returns (returncode, 0).
-        If wait=False, runs as background daemon and returns (None, pid).
-        Handles User=/Group= via preexec_fn for privilege dropping.
-        """
         check, parts = parse_exec_cmd(cmd_str)
         if not parts:
             return (0, 0)
@@ -1275,15 +1197,9 @@ class ServiceManager:
             log_error("Failed to execute %s: %s", parts[0], e)
             return (1, 0)
 
-    # ------------------------------------------------------------------
-    #  Start
-    # ------------------------------------------------------------------
+    # ---- Start ----
 
     def _start_dependencies(self, name, unit):
-        """Start Requires= and Wants= dependencies recursively.
-
-        Uses _starting guard set to prevent infinite recursion.
-        """
         if not hasattr(self, "_starting"):
             self._starting = set()
         if name in self._starting:
@@ -1318,10 +1234,7 @@ class ServiceManager:
         if stype in UNSUPPORTED_TYPES:
             log_error("Unsupported service type '%s' for %s", stype, name)
             return False
-
         self._pkill_service(name, unit)
-
-        # Evaluate ConditionPathExists= (supports ! negation)
         cond = unit.condition_path_exists
         if cond:
             negate = cond.startswith("!")
@@ -1331,7 +1244,6 @@ class ServiceManager:
                 if VERBOSE:
                     log_warn("ConditionPathExists failed for %s: %s", name, cond)
                 return False
-
         if not self._ensure_socket_services(name, unit):
             log_error("Cannot start %s: required socket services not available", name)
             return False
@@ -1368,7 +1280,6 @@ class ServiceManager:
             return self._start_simple(name, unit, env)
 
     def _start_simple(self, name, unit, env):
-        """Start a Type=simple (or notify) service as a background process."""
         log_file = self._log_path(name)
         cmds = unit.exec_start
         if not cmds:
@@ -1386,7 +1297,6 @@ class ServiceManager:
             self._write_status(name, "active", pid=pid)
         env["MAINPID"] = str(pid)
         if not self.dry_run:
-            # Give notify services more time to initialize
             wt = 1.5 if unit.service_type in ("notify", "notify-reload") else 0.5
             time.sleep(wt)
             if not pid_exists(pid):
@@ -1407,12 +1317,6 @@ class ServiceManager:
         return True
 
     def _start_dbus(self, name, unit, env):
-        """Start a Type=dbus service.
-
-        Like simple, but waits for the BusName= to appear on the
-        system bus before declaring the service ready (systemd-defined
-        behaviour for Type=dbus).
-        """
         log_file = self._log_path(name)
         cmds = unit.exec_start
         if not cmds:
@@ -1470,11 +1374,6 @@ class ServiceManager:
         return True
 
     def _start_forking(self, name, unit, env):
-        """Start a Type=forking service.
-
-        Runs ExecStart synchronously (the process forks and the parent
-        exits), then reads the daemon PID from PIDFile= if available.
-        """
         log_file = self._log_path(name)
         cmds = unit.exec_start
         if not cmds:
@@ -1516,11 +1415,6 @@ class ServiceManager:
         return True
 
     def _start_oneshot(self, name, unit, env):
-        """Start a Type=oneshot service.
-
-        Runs all ExecStart commands synchronously.
-        Stays 'active' only if RemainAfterExit=yes.
-        """
         log_file = self._log_path(name)
         cmds = unit.exec_start
         if not cmds:
@@ -1550,9 +1444,7 @@ class ServiceManager:
             self._run_cmd(cmd, env, unit, wait=True)
         return True
 
-    # ------------------------------------------------------------------
-    #  Stop
-    # ------------------------------------------------------------------
+    # ---- Stop ----
 
     def stop(self, name):
         name = self.resolve_name(name)
@@ -1564,6 +1456,22 @@ class ServiceManager:
         if not unit:
             log_error("Service not found: %s", name)
             return False
+        related_sockets = self._find_related_sockets(name, unit)
+        if related_sockets:
+            alive = [
+                s
+                for s in related_sockets
+                if any(
+                    os.path.exists(p) and is_socket_alive(p)
+                    for p in self._get_socket_paths(s)
+                )
+            ]
+            if alive:
+                log_warn(
+                    "Stopping '%s', but its triggering units are still active:\n  %s",
+                    name,
+                    "\n  ".join(alive),
+                )
         stop_deps = self._collect_stop_dependencies(name, unit)
         pid = self._read_pid(name)
         if not pid or not pid_exists(pid):
@@ -1581,7 +1489,16 @@ class ServiceManager:
         if self.dry_run:
             log_info("[DRY RUN] Would stop PID %d", pid)
             return True
-        # SIGTERM first, wait up to 5 seconds, then SIGKILL
+        exec_stop = unit.exec_stop
+        if exec_stop:
+            env = self._build_env(unit)
+            env["MAINPID"] = str(pid)
+            for cmd in exec_stop:
+                self._run_cmd(cmd, env, unit, wait=True)
+            for _ in range(15):
+                if not pid_exists(pid):
+                    break
+                time.sleep(0.2)
         if pid_exists(pid):
             try:
                 os.kill(pid, signal.SIGTERM)
@@ -1612,7 +1529,6 @@ class ServiceManager:
         return True
 
     def _stop_dependencies(self, parent, dep_list):
-        """Stop dependencies that are no longer needed by any running service."""
         if not dep_list:
             return
         if not hasattr(self, "_stopping"):
@@ -1639,9 +1555,227 @@ class ServiceManager:
         time.sleep(0.5)
         return self.start(name)
 
-    # ------------------------------------------------------------------
-    #  Enable / disable
-    # ------------------------------------------------------------------
+    # ---- Reload ----
+
+    def reload(self, name):
+        """Execute ExecReload= commands, or send SIGHUP as fallback.
+        Fails if the service is not currently active.
+        """
+        name = self.resolve_name(name)
+        log_action("RELOAD request for %s", name)
+        if is_critical_service(name):
+            log_error("Refusing to manage critical service: %s", name)
+            return False
+        unit = self.get_unit(name)
+        if not unit:
+            log_error("Service not found: %s", name)
+            return False
+        pid = self._read_pid(name)
+        if not pid or not pid_exists(pid):
+            log_error("%s is not active, cannot reload.", name)
+            return False
+        exec_reload = unit.exec_reload
+        if not exec_reload:
+            log_warn("No ExecReload= defined for %s, sending SIGHUP.", name)
+            if self.dry_run:
+                log_info("[DRY RUN] Would send SIGHUP to PID %d", pid)
+                return True
+            try:
+                os.kill(pid, signal.SIGHUP)
+                log_info("Sent SIGHUP to %s (PID %d)", name, pid)
+                return True
+            except ProcessLookupError:
+                log_error("Process %d not found", pid)
+                self._remove_pid(name)
+                self._write_status(name, "inactive")
+                return False
+            except PermissionError:
+                log_error("Permission denied sending SIGHUP to PID %d", pid)
+                return False
+        env = self._build_env(unit)
+        env["MAINPID"] = str(pid)
+        if self.dry_run:
+            for cmd in exec_reload:
+                log_info("[DRY RUN] Would execute: %s", cmd)
+            return True
+        log_file = self._log_path(name)
+        with open(log_file, "a") as lf:
+            lf.write(
+                "\n--- %s RELOAD %s ---\n"
+                % (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name)
+            )
+        for cmd in exec_reload:
+            chk, _ = parse_exec_cmd(cmd)
+            rc, _ = self._run_cmd(cmd, env, unit, wait=True, log_file=log_file)
+            if rc and chk:
+                log_error("ExecReload failed for %s (exit %d)", name, rc)
+                return False
+        log_info("%s reloaded", name)
+        return True
+
+    # ---- Kill ----
+
+    def kill_service(self, name, sig="SIGTERM", kill_who="all"):
+        name = self.resolve_name(name)
+        log_action("KILL request for %s (signal=%s, who=%s)", name, sig, kill_who)
+        if is_critical_service(name):
+            log_error("Refusing to manage critical service: %s", name)
+            return False
+        unit = self.get_unit(name)
+        if not unit:
+            log_error("Failed to kill unit %s: Unit not found.", name)
+            return False
+        pid = self._read_pid(name)
+        if not pid or not pid_exists(pid):
+            log_error("Failed to kill unit %s: Unit %s is not running.", name, name)
+            return False
+        signum = resolve_signal(sig)
+        if signum is None:
+            log_error("Unknown signal: %s", sig)
+            return False
+        if self.dry_run:
+            sig_display = sig.upper() if isinstance(sig, str) else str(sig)
+            log_info("[DRY RUN] Would send %s to PID %d (%s)", sig_display, pid, name)
+            return True
+        try:
+            if kill_who == "all":
+                try:
+                    pgid = os.getpgid(pid)
+                    os.killpg(pgid, signum)
+                except (ProcessLookupError, PermissionError, OSError):
+                    os.kill(pid, signum)
+            else:
+                os.kill(pid, signum)
+            return True
+        except ProcessLookupError:
+            log_error("Failed to kill unit %s: Process %d not found.", name, pid)
+            self._remove_pid(name)
+            self._write_status(name, "inactive")
+            return False
+        except PermissionError:
+            log_error(
+                "Failed to kill unit %s: Permission denied for PID %d.", name, pid
+            )
+            return False
+        except OSError as e:
+            log_error("Failed to kill unit %s: %s", name, e)
+            return False
+
+    # ---- Cat ----
+
+    def cat_service(self, name):
+        """Print unit file contents with path header, plus drop-in overrides."""
+        name = self.resolve_name(name)
+        unit = self.get_unit(name)
+        if not unit:
+            log_error("No files found for %s.", name)
+            return False
+        if not unit.path:
+            log_error("No unit file path for %s", name)
+            return False
+        printed_something = False
+        try:
+            with open(unit.path, "r") as f:
+                content = f.read()
+            print("# %s" % unit.path)
+            print(content, end="" if content.endswith("\n") else "\n")
+            printed_something = True
+        except (IOError, OSError) as e:
+            log_error("Failed to read %s: %s", unit.path, e)
+            return False
+
+        # Per-unit drop-in: <name>.d/*.conf
+        for unit_dir in self._unit_paths:
+            dropin_dir = os.path.join(unit_dir, name + ".d")
+            if not os.path.isdir(dropin_dir):
+                continue
+            for fname in sorted(os.listdir(dropin_dir)):
+                if not fname.endswith(".conf"):
+                    continue
+                fpath = os.path.join(dropin_dir, fname)
+                try:
+                    with open(fpath, "r") as f:
+                        content = f.read()
+                    if printed_something:
+                        print()
+                    print("# %s" % fpath)
+                    print(content, end="" if content.endswith("\n") else "\n")
+                    printed_something = True
+                except (IOError, OSError) as e:
+                    log_debug("Failed to read drop-in %s: %s", fpath, e)
+
+        # Type-level drop-in: service.d/*.conf
+        unit_type = name.rsplit(".", 1)[-1] if "." in name else "service"
+        for unit_dir in self._unit_paths:
+            type_dropin_dir = os.path.join(unit_dir, unit_type + ".d")
+            if not os.path.isdir(type_dropin_dir):
+                continue
+            for fname in sorted(os.listdir(type_dropin_dir)):
+                if not fname.endswith(".conf"):
+                    continue
+                fpath = os.path.join(type_dropin_dir, fname)
+                try:
+                    with open(fpath, "r") as f:
+                        content = f.read()
+                    if printed_something:
+                        print()
+                    print("# %s" % fpath)
+                    print(content, end="" if content.endswith("\n") else "\n")
+                    printed_something = True
+                except (IOError, OSError) as e:
+                    log_debug("Failed to read type drop-in %s: %s", fpath, e)
+        return printed_something
+
+    # ---- Help ----
+
+    def help_service(self, name):
+        """Show Documentation= URLs. Opens man: pages directly,
+        prints http(s):// URLs to stdout.
+        """
+        name = self.resolve_name(name)
+        unit = self.get_unit(name)
+        if not unit:
+            log_error("No files found for %s.", name)
+            return False
+        docs = unit.documentation
+        if not docs:
+            log_info("No documentation found for %s", name)
+            return False
+        all_urls = []
+        for doc_line in docs:
+            all_urls.extend(doc_line.split())
+        if not all_urls:
+            log_info("No documentation found for %s", name)
+            return False
+        man_pages = [u for u in all_urls if u.startswith("man:")]
+        other_urls = [u for u in all_urls if not u.startswith("man:")]
+        opened_man = False
+        for man_url in man_pages:
+            m = re.match(r"man:([^(]+?)(?:\((\d+)\))?$", man_url)
+            if not m:
+                other_urls.append(man_url)
+                continue
+            man_name = m.group(1)
+            man_section = m.group(2)
+            cmd = ["man"]
+            if man_section:
+                cmd.append(man_section)
+            cmd.append(man_name)
+            try:
+                result = subprocess.run(cmd)
+                if result.returncode == 0:
+                    opened_man = True
+                else:
+                    other_urls.append(man_url)
+            except (OSError, subprocess.SubprocessError):
+                other_urls.append(man_url)
+        if other_urls:
+            print("Additional documentation: %s" % other_urls[0])
+            for url in other_urls[1:]:
+                print("                          %s" % url)
+        return opened_man or bool(other_urls)
+
+    # ---- Enable / Disable ----
 
     def enable(self, name):
         name = self.resolve_name(name)
@@ -1713,9 +1847,7 @@ class ServiceManager:
             msg = "[\033[32m  OK  \033[0m]" if ok else "[\033[31mFAILED\033[0m]"
             print("%s %s %s." % (msg, "Started" if ok else "Failed to start", name))
 
-    # ------------------------------------------------------------------
-    #  Status / log / list
-    # ------------------------------------------------------------------
+    # ---- Status / Log / List ----
 
     def status(self, name):
         name = self.resolve_name(name)
@@ -1725,6 +1857,15 @@ class ServiceManager:
             return 4
         print("● %s - %s" % (name, unit.description))
         print("   Loaded: loaded (%s)" % (unit.path or "unknown"))
+        docs = unit.documentation
+        if docs:
+            all_urls = []
+            for d in docs:
+                all_urls.extend(d.split())
+            if all_urls:
+                print("     Docs: %s" % all_urls[0])
+                for url in all_urls[1:]:
+                    print("           %s" % url)
         if unit.bus_name:
             ba = check_dbus_bus_name(unit.bus_name, timeout=2.0)
             print(
@@ -1838,70 +1979,87 @@ class ServiceManager:
         print("\nTotal: %d services (* = enabled)" % len(rows))
 
 
-# ======================================================================
-#  CLI
-# ======================================================================
-
-
 def main():
     global VERBOSE
+
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-h", "--help"):
+        sys.stdout.write(HELP_TEXT)
+        sys.exit(0)
+    if len(sys.argv) >= 2 and sys.argv[1] == "--version":
+        print("serviced v%s - lightweight service manager" % VERSION)
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
         prog="serviced",
-        description="Lightweight service manager for systemd .service files",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s list                        List all services
-  %(prog)s list-running                List running services
-  %(prog)s start sshd                  Start sshd service
-  %(prog)s stop sshd                   Stop sshd service
-  %(prog)s restart sshd                Restart sshd service
-  %(prog)s status sshd                 Show sshd status
-  %(prog)s log sshd                    Show sshd logs
-  %(prog)s --dry-run start ssh         Preview without executing
-  %(prog)s version                     Show version info
-  %(prog)s enable sshd                 Enable to start on boot
-  %(prog)s disable sshd                Disable from starting on boot
-  %(prog)s start                       Start all enabled services
-  %(prog)s start dbus                  Start D-Bus (auto-creates /run/dbus)
-  %(prog)s start systemd-udevd         Start udevd in chroot
-  %(prog)s start systemd-logind        Start logind (needs dbus + cgroups)
-        """,
+        add_help=False,
     )
-    parser.add_argument("--dry-run", action="store_true", help="Preview only")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Debug output")
 
-    sub = parser.add_subparsers(dest="command", required=True)
+    def _parser_error(message):
+        sys.stderr.write("serviced: %s\n\n" % message)
+        sys.stdout.write(HELP_TEXT)
+        sys.exit(2)
 
-    p = sub.add_parser("start", help="Start a service or all enabled")
-    p.add_argument("service", nargs="?", help="Service name")
+    parser.error = _parser_error
 
-    p = sub.add_parser("stop", help="Stop a service")
-    p.add_argument("service", help="Service name")
+    parser.add_argument("-h", "--help", action="store_true", default=False)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--user",
+        action="store_true",
+        help="Talk to the service manager of the calling user",
+    )
 
-    p = sub.add_parser("restart", help="Restart a service")
-    p.add_argument("service", help="Service name")
+    sub = parser.add_subparsers(dest="command")
 
-    p = sub.add_parser("enable", help="Enable a service")
-    p.add_argument("service", help="Service name")
+    p = sub.add_parser("start")
+    p.add_argument("service", nargs="?")
 
-    p = sub.add_parser("disable", help="Disable a service")
-    p.add_argument("service", help="Service name")
+    p = sub.add_parser("stop")
+    p.add_argument("service")
 
-    p = sub.add_parser("status", help="Show service status")
-    p.add_argument("service", help="Service name")
+    p = sub.add_parser("restart")
+    p.add_argument("service")
 
-    p = sub.add_parser("log", help="Show service log")
-    p.add_argument("service", help="Service name")
-    p.add_argument("-n", "--lines", type=int, default=50, help="Lines (default: 50)")
+    p = sub.add_parser("reload")
+    p.add_argument("service")
 
-    sub.add_parser("list", help="List all services")
-    sub.add_parser("list-running", help="List running services")
-    sub.add_parser("version", help="Show version")
+    p = sub.add_parser("kill")
+    p.add_argument("service")
+    p.add_argument("-s", "--signal", default="SIGTERM")
+    p.add_argument("--kill-who", default="all", choices=["main", "all"])
+
+    p = sub.add_parser("enable")
+    p.add_argument("service")
+
+    p = sub.add_parser("disable")
+    p.add_argument("service")
+
+    p = sub.add_parser("status")
+    p.add_argument("service")
+
+    p = sub.add_parser("cat")
+    p.add_argument("service")
+
+    p = sub.add_parser("help")
+    p.add_argument("service")
+
+    p = sub.add_parser("log")
+    p.add_argument("service")
+    p.add_argument("-n", "--lines", type=int, default=50)
+
+    sub.add_parser("list")
+    sub.add_parser("list-running")
+    sub.add_parser("version")
 
     args = parser.parse_args()
+
+    if getattr(args, "help", False) or args.command is None:
+        sys.stdout.write(HELP_TEXT)
+        sys.exit(0)
+
     VERBOSE = args.verbose
-    mgr = ServiceManager(dry_run=args.dry_run)
+    mgr = ServiceManager(dry_run=args.dry_run, user_mode=args.user)
     ensure_dirs()
 
     if args.command == "start":
@@ -1915,6 +2073,7 @@ Examples:
                 sys.exit(1)
         else:
             mgr.start_all_enabled()
+
     elif args.command == "stop":
         ok = mgr.stop(args.service)
         if not VERBOSE:
@@ -1923,6 +2082,7 @@ Examples:
             print("%s %s %s." % (m, a, args.service))
         if not ok:
             sys.exit(1)
+
     elif args.command == "restart":
         mgr.stop(args.service)
         ok = mgr.start(args.service)
@@ -1932,20 +2092,49 @@ Examples:
             print("%s %s %s." % (m, a, args.service))
         if not ok:
             sys.exit(1)
+
+    elif args.command == "reload":
+        ok = mgr.reload(args.service)
+        if not VERBOSE:
+            m = "[\033[32m  OK  \033[0m]" if ok else "[\033[31mFAILED\033[0m]"
+            a = "Reloaded" if ok else "Failed to reload"
+            print("%s %s %s." % (m, a, args.service))
+        if not ok:
+            sys.exit(1)
+
+    elif args.command == "kill":
+        ok = mgr.kill_service(args.service, sig=args.signal, kill_who=args.kill_who)
+        if not ok:
+            sys.exit(1)
+
+    elif args.command == "cat":
+        if not mgr.cat_service(args.service):
+            sys.exit(1)
+
+    elif args.command == "help":
+        if not mgr.help_service(args.service):
+            sys.exit(1)
+
     elif args.command == "enable":
         if not mgr.enable(args.service):
             sys.exit(1)
+
     elif args.command == "disable":
         if not mgr.disable(args.service):
             sys.exit(1)
+
     elif args.command == "status":
         sys.exit(mgr.status(args.service))
+
     elif args.command == "log":
         mgr.show_log(args.service, lines=args.lines)
+
     elif args.command == "list":
         mgr.list_services(running_only=False)
+
     elif args.command == "list-running":
         mgr.list_services(running_only=True)
+
     elif args.command == "version":
         print("serviced v%s - lightweight service manager" % VERSION)
 
