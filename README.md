@@ -287,6 +287,8 @@ chmod +x $PREFIX/bin/chroot-distro
 
 </div>
 
+## To know more check our [wiki](https://github.com/sabamdarif/chroot-distro/wiki)
+
 ---
 
 ## Support the Project
@@ -327,6 +329,7 @@ Special thanks to:
 - [proot-distro](https://github.com/termux/proot-distro)
 - [Magisk-Modules-Alt-Repo/chroot-distro](https://github.com/Magisk-Modules-Alt-Repo/chroot-distro)
 - [ravindu644/Ubuntu-Chroot](https://github.com/ravindu644/Ubuntu-Chroot)
+- [gdraheim/docker-systemctl-replacement](https://github.com/gdraheim/docker-systemctl-replacement)
 
 ---
 
