@@ -25,3 +25,13 @@ indent_size = 4
 trim_trailing_whitespace = false
 indent_style = space
 indent_size = 4
+
+[*.{sh,bash,fish}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+[src/chroot_distro/completions/*]
+indent_style = tab
+indent_size = 4
+tab_width = 4
