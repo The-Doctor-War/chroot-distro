@@ -138,6 +138,7 @@ def command_remove(args) -> None:
         log_info(f"Removing container '{container_name}'...")
 
         from collections.abc import Callable
+
         on_remove: Callable[[str], None] | None = None
         if verbose:
 

@@ -209,7 +209,7 @@ def _pack_stream(
         digest_tee = _ProgressHashTee(out_fh, digest_h)
         gz = gzip.GzipFile(fileobj=digest_tee, mode="wb", mtime=0)
         diff_id_tee = _ProgressHashTee(gz, diff_id_h, on_progress=show)
-        tf = tarfile.open(fileobj=diff_id_tee, mode="w|")  # type: ignore[call-overload]  # noqa: SIM115
+        tf = tarfile.open(fileobj=diff_id_tee, mode="w|")  # type: ignore[call-overload]
         populate(tf)
         tf.close()
         tf = None

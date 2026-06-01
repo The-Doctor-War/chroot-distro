@@ -2,7 +2,7 @@ import argparse
 import sys
 from typing import NoReturn
 
-from chroot_distro.constants import PROGRAM_NAME
+from chroot_distro.constants import PROGRAM_NAME, PROGRAM_VERSION
 from chroot_distro.message import crit_error, msg
 
 
@@ -88,6 +88,7 @@ def build_parser() -> _CdArgumentParser:
         add_help=False,
     )
     parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {PROGRAM_VERSION}")
     parser.add_argument("--no-elevate", action="store_true")
     parser.add_argument("--use-sudo", action="store_true")
     sub = parser.add_subparsers(dest="command")
