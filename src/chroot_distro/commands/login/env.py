@@ -124,7 +124,7 @@ def inject_termux_profile(
         pass
 
 
-def resolve_term(rootfs: str, term: str) -> str:
+def resolve_term(rootfs: str, term: str | None) -> str:
     """Verify if the terminal type term has a terminfo file inside the rootfs.
 
     If not found, fallback to 'xterm-256color'.

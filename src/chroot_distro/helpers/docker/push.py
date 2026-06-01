@@ -234,6 +234,7 @@ def push_image(image_ref: str, arch: str) -> dict[str, typing.Any]:
             f"No cached manifest for '{image_ref}' ({arch}). Build image "
             f"first with: {PROGRAM_NAME} build -t {image_ref}"
         )
+    assert repo is not None
 
     layers = manifest.get("layers", [])
     if not layers:

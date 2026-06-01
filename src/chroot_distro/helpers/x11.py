@@ -91,15 +91,14 @@ def resolve_host_x11_env() -> tuple[dict[str, str], list[str]]:
             env["XAUTHORITY"] = discovered
 
     xauthority = env.get("XAUTHORITY", "")
-    if xauthority and os.path.isfile(xauthority):
-        if _is_safe_auth_path(xauthority, uid, home):
-            real = os.path.realpath(xauthority)
-            if real.startswith(runtime + os.sep) or real == runtime:
-                # /run is already bind-mounted by default; ensure runtime dir is set.
-                if "XDG_RUNTIME_DIR" not in env and os.path.isdir(runtime):
-                    env["XDG_RUNTIME_DIR"] = runtime
-            elif real not in bind_paths:
-                bind_paths.append(real)
+    if xauthority and os.path.isfile(xauthority) and _is_safe_auth_path(xauthority, uid, home):
+        real = os.path.realpath(xauthority)
+        if real.startswith(runtime + os.sep) or real == runtime:
+            # /run is already bind-mounted by default; ensure runtime dir is set.
+            if "XDG_RUNTIME_DIR" not in env and os.path.isdir(runtime):
+                env["XDG_RUNTIME_DIR"] = runtime
+        elif real not in bind_paths:
+            bind_paths.append(real)
 
     return env, bind_paths
 
@@ -113,9 +112,7 @@ def guest_can_read_auth(guest_uid: int, path: str) -> bool:
     mode = st.st_mode & 0o777
     if st.st_uid == guest_uid:
         return True
-    if mode & 0o004:
-        return True
-    return False
+    return bool(mode & 0o004)
 
 
 def x11_auth_bind_path(xauthority: str) -> str | None:

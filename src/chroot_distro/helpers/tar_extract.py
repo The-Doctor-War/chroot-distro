@@ -27,7 +27,9 @@ def extract_tar_to_rootfs(
 
     with open(archive_path, "rb") as raw_fh:
         counter = ByteCounter(raw_fh)
-        with tarfile.open(fileobj=counter, mode="r|*") as tf:
+        import typing
+
+        with tarfile.open(fileobj=typing.cast(typing.Any, counter), mode="r|*") as tf:
             for member in tf:
                 _process_member(
                     member,

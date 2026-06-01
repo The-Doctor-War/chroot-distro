@@ -150,6 +150,7 @@ def pull_image(image_ref: str, rootfs_dir: str, arch: str) -> dict[str, typing.A
     registry = parse_image_ref(image_ref)[0]
 
     if manifest is not None:
+        assert repo is not None
         layers = manifest.get("layers", [])
         if all_layers_cached(layers):
             log_info(f"Image '{image_ref}' ({arch}) is cached.")

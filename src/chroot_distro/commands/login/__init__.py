@@ -79,6 +79,7 @@ def _resolve_login_user(rootfs: str, container_name: str, user_arg: str) -> dict
         group_spec = None
 
     passwd_available = False
+    passwd_path = ""
     try:
         passwd_path = resolve_rootfs_path(rootfs, "/etc/passwd")
         passwd_available = os.path.isfile(passwd_path)
@@ -354,16 +355,20 @@ def _command_login_inner(container_name: str, args) -> None:
                     groups = user["groups"]
             except OSError as exc:
                 warn(f"cannot align user for shared home: {exc}")
-        elif not use_shared_home and not minimal and login_home:
-            if sync_passwd_to_home_owner(rootfs, login_user, login_home):
-                user = _resolve_login_user(
-                    rootfs,
-                    container_name,
-                    login_user,
-                )
-                login_uid = user["uid"]
-                login_gid = user["gid"]
-                groups = user["groups"]
+        elif (
+            not use_shared_home
+            and not minimal
+            and login_home
+            and sync_passwd_to_home_owner(rootfs, login_user, login_home)
+        ):
+            user = _resolve_login_user(
+                rootfs,
+                container_name,
+                login_user,
+            )
+            login_uid = user["uid"]
+            login_gid = user["gid"]
+            groups = user["groups"]
 
         if login_home and login_home != "/" and login_home == passwd_home:
             try:

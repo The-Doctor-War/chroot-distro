@@ -145,7 +145,8 @@ def main() -> None:
         msg()
         sys.exit(1)
 
-    canonical = ALIAS_TO_CANONICAL.get(command, command)
+    assert command is not None
+    canonical: str = ALIAS_TO_CANONICAL.get(command) or command
 
     if getattr(args, "help", False):
         if canonical in HELP_COMMANDS:
