@@ -3,7 +3,11 @@ import os
 import shutil
 import stat
 import sys
-import tarfile
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 import typing
 
 import chroot_distro.helpers.mount_manager as mount_manager
@@ -39,6 +43,7 @@ _MAGIC_COMPRESS = (
     (b"BZh", "bz2"),  # bzip2
     (b"\xfd7zXZ\x00", "xz"),  # xz
     (b"\x5d\x00", "xz"),  # lzma legacy
+    (b"\x28\xb5\x2f\xfd", "zst"),  # zstd
 )
 
 _LEGACY_PREFIX = "installed-rootfs"

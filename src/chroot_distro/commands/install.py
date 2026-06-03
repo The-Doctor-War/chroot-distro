@@ -4,7 +4,11 @@ import os
 import re
 import shutil
 import sys
-import tarfile
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 import tempfile
 
 from chroot_distro.arch import get_device_cpu_arch, normalize_arch

@@ -5,7 +5,12 @@ import re
 import shlex
 import shutil
 import stat
-import tarfile
+import sys
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 import time
 import typing
 import urllib.error

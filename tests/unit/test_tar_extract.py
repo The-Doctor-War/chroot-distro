@@ -1,5 +1,10 @@
 import os
-import tarfile
+import sys
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 import tempfile
 from unittest.mock import patch
 
@@ -90,3 +95,31 @@ def test_extract_tar_preserves_ownership(mock_lchown):
 
         # Verify os.lchown was called for file.txt with custom UID/GID
         mock_lchown.assert_any_call(os.path.join(rootfs_dir, "file.txt"), 1005, 1006)
+
+
+def test_extract_tar_zst_to_rootfs():
+    import sys
+    if sys.version_info >= (3, 14):
+        from compression import zstd
+    else:
+        from backports import zstd
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tar_path = os.path.join(tmp_dir, "test.tar.zst")
+        rootfs_dir = os.path.join(tmp_dir, "rootfs")
+        os.makedirs(rootfs_dir)
+
+        src_dir = os.path.join(tmp_dir, "src")
+        os.makedirs(src_dir)
+
+        with open(os.path.join(src_dir, "file.txt"), "w") as f:
+            f.write("zstd works")
+
+        with zstd.ZstdFile(tar_path, "w") as zs, tarfile.open(fileobj=zs, mode="w") as tar:
+            tar.add(src_dir, arcname=".")
+
+        extract_tar_to_rootfs(tar_path, rootfs_dir)
+
+        assert os.path.exists(os.path.join(rootfs_dir, "file.txt"))
+        with open(os.path.join(rootfs_dir, "file.txt")) as f:
+            assert f.read() == "zstd works"

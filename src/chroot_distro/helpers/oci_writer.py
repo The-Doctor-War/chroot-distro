@@ -1,7 +1,12 @@
 import hashlib
 import json
 import os
-import tarfile
+import sys
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 import typing
 
 from chroot_distro.atomic import atomic_replace, atomic_write
@@ -119,6 +124,10 @@ _TAR_MODES = {
     ".tar.xz": "w:xz",
     ".txz": "w:xz",
     ".oci.tar.xz": "w:xz",
+    ".tar.zst": "w:zst",
+    ".tar.zstd": "w:zst",
+    ".oci.tar.zst": "w:zst",
+    ".oci.tar.zstd": "w:zst",
 }
 
 

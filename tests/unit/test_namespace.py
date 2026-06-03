@@ -132,7 +132,7 @@ def test_get_process_start_time():
 @patch("chroot_distro.helpers.namespace._remove_holder_state")
 @patch("chroot_distro.helpers.namespace.os.path.isfile", return_value=True)
 def test_read_holder_pid_success(mock_isfile, mock_remove_state):
-    m_open = patch("builtins.open", mock_open(read_data="42\n12345.67\n")).start()
+    patch("builtins.open", mock_open(read_data="42\n12345.67\n")).start()
     try:
         with (
             patch("chroot_distro.helpers.namespace._pid_alive", return_value=True),
@@ -148,7 +148,7 @@ def test_read_holder_pid_success(mock_isfile, mock_remove_state):
 @patch("chroot_distro.helpers.namespace._remove_holder_state")
 @patch("chroot_distro.helpers.namespace.os.path.isfile", return_value=True)
 def test_read_holder_pid_stale_start_time(mock_isfile, mock_remove_state):
-    m_open = patch("builtins.open", mock_open(read_data="42\n12345.67\n")).start()
+    patch("builtins.open", mock_open(read_data="42\n12345.67\n")).start()
     try:
         with (
             patch("chroot_distro.helpers.namespace._pid_alive", return_value=True),
@@ -164,7 +164,7 @@ def test_read_holder_pid_stale_start_time(mock_isfile, mock_remove_state):
 @patch("chroot_distro.helpers.namespace._remove_holder_state")
 @patch("chroot_distro.helpers.namespace.os.path.isfile", return_value=True)
 def test_read_holder_pid_dead_process(mock_isfile, mock_remove_state):
-    m_open = patch("builtins.open", mock_open(read_data="42\n12345.67\n")).start()
+    patch("builtins.open", mock_open(read_data="42\n12345.67\n")).start()
     try:
         with (
             patch("chroot_distro.helpers.namespace._pid_alive", return_value=False),

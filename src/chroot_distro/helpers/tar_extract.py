@@ -2,7 +2,12 @@ import contextlib
 import os
 import shutil
 import stat
-import tarfile
+import sys
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 
 from chroot_distro.progress import ByteCounter, clear_bar, draw_bytes_bar
 

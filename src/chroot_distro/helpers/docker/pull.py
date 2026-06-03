@@ -54,13 +54,7 @@ def _layer_short_id(digest: str) -> str:
 
 
 def _check_layer_media_type(layer: dict[str, typing.Any], layer_index: int, n_layers: int) -> None:
-    media_type = layer.get("mediaType", "")
-    if "zstd" in media_type:
-        raise RuntimeError(
-            f"Layer {layer_index + 1}/{n_layers} uses zstd compression which is "
-            "not supported by Python's tarfile module. "
-            "Try a different image tag that ships gzip-compressed layers."
-        )
+    pass
 
 
 def _download_layers_parallel(

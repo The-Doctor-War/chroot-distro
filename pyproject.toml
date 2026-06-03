@@ -34,10 +34,13 @@ classifiers = [
 	"Programming Language :: Python :: 3.11",
 	"Programming Language :: Python :: 3.12",
 	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: 3.14",
 	"Topic :: System :: Systems Administration",
 	"Typing :: Typed",
 ]
-dependencies = [] # Zero third-party deps
+dependencies = [
+	"backports-zstd; python_version < '3.14'",
+]
 
 [project.optional-dependencies]
 dev = [

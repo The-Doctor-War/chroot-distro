@@ -107,6 +107,8 @@ def test_format_table_aligns_columns():
     with patch("chroot_distro.message.C", dict.fromkeys(["GREEN", "CYAN", "YELLOW", "BCYAN", "RST"], "")):
         lines = _format_table(rows)
     assert len(lines) == 3
-    assert "NAME" in lines[0] and "SOURCE" in lines[0] and "STATUS" in lines[0]
+    assert "NAME" in lines[0]
+    assert "SOURCE" in lines[0]
+    assert "STATUS" in lines[0]
     assert "long-name" in lines[2]
     assert "ghcr.io/org/image:tag" in lines[2]

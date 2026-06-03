@@ -1001,9 +1001,6 @@ cp src/chroot_distro/completions/chroot-distro.fish \
 - **Registry authentication**: private pulls and pushes need
   `CD_DOCKER_AUTH=user:password` (or `PD_DOCKER_AUTH`). Docker
   `config.json` credential helpers are not read.
-- **No zstd-compressed layers**: Python's `tarfile` does not support
-  zstd. Images using zstd layers fail with an explicit error; try another
-  tag or compression format.
 - **Dockerfile builds are not BuildKit**: `RUN` executes under `chroot`,
   not a real container runtime. BuildKit-only Dockerfile features are
   rejected. Multi-platform manifest lists are not produced — build and

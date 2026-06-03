@@ -2,7 +2,11 @@ import json
 import os
 import shutil
 import sys
-import tarfile
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 
 from chroot_distro.atomic import atomic_write
 from chroot_distro.helpers.docker import (

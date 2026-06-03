@@ -2,7 +2,11 @@ import contextlib
 import os
 import stat
 import sys
-import tarfile
+
+if sys.version_info >= (3, 14):
+    import tarfile
+else:
+    from backports.zstd import tarfile
 
 import chroot_distro.helpers.mount_manager as mount_manager
 import chroot_distro.helpers.session as session
@@ -25,15 +29,18 @@ _COMPRESS_EXTS = (
     (".txz", "xz"),
     (".tar.lzma", "xz"),
     (".tlzma", "xz"),
+    (".tar.zst", "zst"),
+    (".tzst", "zst"),
     (".tar", ""),
 )
 
-_UNSUPPORTED_EXTS = (".tar.zst", ".tzst", ".tar.lz4", ".tar.lz")
+_UNSUPPORTED_EXTS = (".tar.lz4", ".tar.lz")
 
 _COMPRESSION_ARG_MAP = {
     "gzip": "gz",
     "bzip2": "bz2",
     "xz": "xz",
+    "zstd": "zst",
     "none": "",
 }
 

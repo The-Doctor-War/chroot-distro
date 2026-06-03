@@ -80,7 +80,7 @@ def test_resolve_host_x11_env_sudo_fallback(tmp_path):
         patch("os.path.isdir", side_effect=lambda p: p == "/run/user/1000" or str(p).endswith("1000")),
         patch("os.path.isfile", side_effect=lambda p: str(p).endswith(".Xauthority")),
     ):
-        env, binds = resolve_host_x11_env()
+        env, _binds = resolve_host_x11_env()
 
     assert env["XDG_RUNTIME_DIR"] == "/run/user/1000"
     assert env["XAUTHORITY"] == os.path.join(str(home), ".Xauthority")

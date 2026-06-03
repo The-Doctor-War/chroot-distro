@@ -1,5 +1,13 @@
 import gzip
-import tarfile
+import sys
+
+if sys.version_info >= (3, 14):
+    import tarfile
+
+    from compression import zstd
+else:
+    from backports import zstd
+    from backports.zstd import tarfile
 
 from chroot_distro.helpers.layer_diff import (
     _file_crc32,
@@ -97,9 +105,10 @@ def test_write_layer_tar(tmp_path):
     f1 = rootfs / "hello.txt"
     f1.write_text("hello layer")
 
+    # 1. Gzip compressed layer
     out_tar = tmp_path / "layer.tar.gz"
 
-    digest, size, diff_id = write_layer_tar(
+    digest, _size, diff_id = write_layer_tar(
         rootfs=str(rootfs),
         paths_to_pack=["hello.txt"],
         deleted=["deleted.txt"],
@@ -114,6 +123,32 @@ def test_write_layer_tar(tmp_path):
 
     # Unpack tar to verify contents
     with gzip.open(out_tar, "rb") as gz, tarfile.open(fileobj=gz, mode="r:") as tf:
+        members = tf.getnames()
+        assert "hello.txt" in members
+        assert ".wh.deleted.txt" in members
+        assert "empty_dir/.wh..wh..opq" in members
+
+        # Check content
+        member = tf.extractfile("hello.txt")
+        assert member.read() == b"hello layer"
+
+    # 2. Zstandard compressed layer
+    out_tar_zst = tmp_path / "layer.tar.zst"
+
+    digest_zst, _size_zst, diff_id_zst = write_layer_tar(
+        rootfs=str(rootfs),
+        paths_to_pack=["hello.txt"],
+        deleted=["deleted.txt"],
+        out_path=str(out_tar_zst),
+        opaque_dirs=["empty_dir"],
+    )
+
+    assert digest_zst.startswith("sha256:")
+    assert diff_id_zst.startswith("sha256:")
+    assert out_tar_zst.exists()
+
+    # Unpack zstd tar to verify contents
+    with zstd.ZstdFile(out_tar_zst, "rb") as zs, tarfile.open(fileobj=zs, mode="r:") as tf:
         members = tf.getnames()
         assert "hello.txt" in members
         assert ".wh.deleted.txt" in members
@@ -138,7 +173,7 @@ def test_write_files_layer(tmp_path):
         "var/log": {"kind": "dir", "mode": 0o700},
     }
 
-    digest, size, diff_id = write_files_layer(file_map, str(out_tar))
+    digest, _size, diff_id = write_files_layer(file_map, str(out_tar))
 
     assert digest.startswith("sha256:")
     assert diff_id.startswith("sha256:")

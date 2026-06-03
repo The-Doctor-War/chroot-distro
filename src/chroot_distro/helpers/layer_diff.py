@@ -4,9 +4,17 @@ import hashlib
 import io
 import os
 import stat
-import tarfile
+import sys
 import typing
 import zlib
+
+if sys.version_info >= (3, 14):
+    import tarfile
+
+    from compression import zstd
+else:
+    from backports import zstd
+    from backports.zstd import tarfile
 
 from chroot_distro.progress import (
     clear_bar,
@@ -185,13 +193,13 @@ def _pack_stream(
     out_path: str, total_uncompressed: int, populate: typing.Callable[[tarfile.TarFile], None]
 ) -> tuple[str, int, str]:
     """Run `populate(tf)` against a tarfile.TarFile that streams its
-    output through a hash+gzip+hash pipeline into `out_path`.
+    output through a hash + compression + hash pipeline into `out_path`.
 
     `total_uncompressed` is the expected number of tar payload bytes
     (sum of regular-file sizes) used only for the progress bar.
     Headers and padding add a small constant overhead beyond this.
 
-    Returns (digest, gzipped_size, diff_id).
+    Returns (digest, compressed_size, diff_id).
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     tmp = out_path + ".tmp"
@@ -204,8 +212,15 @@ def _pack_stream(
     try:
         with open(tmp, "wb") as out_fh:
             digest_tee = _ProgressHashTee(out_fh, digest_h)
-            with gzip.GzipFile(fileobj=digest_tee, mode="wb", mtime=0) as gz:
-                diff_id_tee = _ProgressHashTee(gz, diff_id_h, on_progress=show)
+
+            compressor: typing.Any
+            if out_path.lower().endswith((".zst", ".zstd")):
+                compressor = zstd.ZstdFile(typing.cast(typing.Any, digest_tee), mode="wb")
+            else:
+                compressor = gzip.GzipFile(fileobj=digest_tee, mode="wb", mtime=0)
+
+            with compressor as cmp_file:
+                diff_id_tee = _ProgressHashTee(cmp_file, diff_id_h, on_progress=show)
                 with tarfile.open(fileobj=diff_id_tee, mode="w|") as tf:  # type: ignore[call-overload]
                     populate(tf)
             out_fh.flush()

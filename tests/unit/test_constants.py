@@ -1,5 +1,6 @@
 import os
 from unittest.mock import patch
+
 from chroot_distro.constants import (
     DEFAULT_LAYER_DOWNLOAD_WORKERS,
     MAX_LAYER_DOWNLOAD_WORKERS,
