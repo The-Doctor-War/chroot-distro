@@ -44,8 +44,9 @@ def test_remove_container_not_installed(mock_crit_error, mock_isdir, mock_rootfs
 @patch("chroot_distro.commands.remove.mount_manager")
 @patch("chroot_distro.commands.remove._remove_path", return_value=True)
 @patch("chroot_distro.commands.remove.log_info")
+@patch("os.unlink")
 def test_remove_no_active_sessions_or_mounts(
-    mock_log, mock_remove_path, mock_mount, mock_session, mock_lock, mock_isdir, mock_dir, mock_rootfs, *_mocks
+    mock_unlink, mock_log, mock_remove_path, mock_mount, mock_session, mock_lock, mock_isdir, mock_dir, mock_rootfs, *_mocks
 ):
     args = MagicMock()
     args.container_name = "alpine"
@@ -59,7 +60,9 @@ def test_remove_no_active_sessions_or_mounts(
     mock_lock.assert_called_once_with("alpine", exclusive=True, command="remove")
     mock_session.reset.assert_called_once_with("alpine")
     mock_mount.unmount_all.assert_called_once_with("/mock/containers/alpine/rootfs", holder=None)
-    mock_remove_path.assert_called_once_with("/mock/containers/alpine", None)
+    # _remove_path is called for the container dir, then for the data dir
+    mock_remove_path.assert_any_call("/mock/containers/alpine", None)
+    assert mock_remove_path.call_count == 2
     mock_log.assert_any_call("Finished removing the container.")
 
 
@@ -73,9 +76,11 @@ def test_remove_no_active_sessions_or_mounts(
 @patch("chroot_distro.commands.remove._remove_path", return_value=True)
 @patch("chroot_distro.commands.remove.log_info")
 @patch("os.kill")
+@patch("os.unlink")
 @patch("chroot_distro.commands.remove.time")
 def test_remove_with_active_sessions_sigterm(
     mock_time,
+    mock_unlink,
     mock_kill,
     mock_log,
     mock_remove_path,
@@ -114,7 +119,9 @@ def test_remove_with_active_sessions_sigterm(
     )
     mock_session.reset.assert_called_once_with("alpine")
     mock_mount.unmount_all.assert_called_once_with("/mock/containers/alpine/rootfs", holder=None)
-    mock_remove_path.assert_called_once_with("/mock/containers/alpine", None)
+    # _remove_path is called for the container dir, then for the data dir
+    mock_remove_path.assert_any_call("/mock/containers/alpine", None)
+    assert mock_remove_path.call_count == 2
     mock_log.assert_any_call("Finished removing the container.")
 
 
@@ -128,9 +135,11 @@ def test_remove_with_active_sessions_sigterm(
 @patch("chroot_distro.commands.remove._remove_path", return_value=True)
 @patch("chroot_distro.commands.remove.log_info")
 @patch("os.kill")
+@patch("os.unlink")
 @patch("chroot_distro.commands.remove.time")
 def test_remove_with_active_sessions_sigkill(
     mock_time,
+    mock_unlink,
     mock_kill,
     mock_log,
     mock_remove_path,
@@ -171,7 +180,9 @@ def test_remove_with_active_sessions_sigkill(
     )
     mock_session.reset.assert_called_once_with("alpine")
     mock_mount.unmount_all.assert_called_once_with("/mock/containers/alpine/rootfs", holder=None)
-    mock_remove_path.assert_called_once_with("/mock/containers/alpine", None)
+    # _remove_path is called for the container dir, then for the data dir
+    mock_remove_path.assert_any_call("/mock/containers/alpine", None)
+    assert mock_remove_path.call_count == 2
     mock_log.assert_any_call("Finished removing the container.")
 
 

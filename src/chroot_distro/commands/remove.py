@@ -8,7 +8,8 @@ import time
 import chroot_distro.helpers.mount_manager as mount_manager
 import chroot_distro.helpers.namespace as namespace
 import chroot_distro.helpers.session as session
-from chroot_distro.locking import ContainerLock
+from chroot_distro.constants import RUNTIME_DIR
+from chroot_distro.locking import ContainerLock, container_lock_path
 from chroot_distro.message import crit_error, log_error, log_info
 from chroot_distro.names import require_valid_name
 from chroot_distro.paths import container_dir, container_rootfs
@@ -150,5 +151,15 @@ def command_remove(args) -> None:
         if not _remove_path(container_dir(container_name), on_remove):
             log_error("Finished with errors. Some files probably were not deleted.")
             sys.exit(1)
+
+        # 4. Clean up the per-container data directory (sessions, isolation.mode, etc.)
+        data_dir = os.path.join(RUNTIME_DIR, "data", container_name)
+        if os.path.isdir(data_dir):
+            _remove_path(data_dir, on_remove)
+
+    # The ContainerLock context has now exited and the flock is released;
+    # it is safe to delete the lock file itself.
+    with contextlib.suppress(OSError):
+        os.unlink(container_lock_path(container_name))
 
     log_info("Finished removing the container.")
