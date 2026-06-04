@@ -1,9 +1,15 @@
+import contextlib
 import hashlib
+import json
 import os
+import shutil
 import ssl
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from chroot_distro.atomic import atomic_replace
 from chroot_distro.helpers.docker.cache import layer_cache_path
@@ -11,6 +17,13 @@ from chroot_distro.helpers.docker.transport import (
     _ua,
     auth_opener,
     registry_base_url,
+)
+from chroot_distro.helpers.download import (
+    _compute_segments,
+    _download_segment,
+    _FallbackToSingleError,
+    _ProbeResult,
+    _Segment,
 )
 from chroot_distro.helpers.tar_extract import extract_tar_to_rootfs
 from chroot_distro.message import warn
@@ -48,6 +61,58 @@ def _is_retryable(exc: BaseException) -> bool:
     return False
 
 
+def _probe_blob(url: str, headers: dict[str, str]) -> _ProbeResult | None:
+    """Send HEAD (or fallback GET Range:0-0) to discover size + Range support.
+
+    Returns *None* on any network error so the caller can fall back silently.
+    """
+    opener = auth_opener()
+    # --- 1st try: HEAD ---
+    try:
+        head_req = urllib.request.Request(url, headers=headers, method="HEAD")
+        with opener.open(head_req) as resp:
+            content_length = int(resp.headers.get("Content-Length", 0))
+            accept_ranges = (resp.headers.get("Accept-Ranges", "")).lower()
+            range_ok = accept_ranges == "bytes"
+            return _ProbeResult(
+                content_length=content_length,
+                final_url=resp.url,
+                range_ok=range_ok,
+            )
+    except urllib.error.HTTPError as exc:
+        if exc.code != 405:
+            return None  # non-405 → give up probing
+    except (OSError, urllib.error.URLError):
+        return None
+
+    # --- 2nd try: GET Range: bytes=0-0 ---
+    try:
+        range_headers = {**headers, "Range": "bytes=0-0", "Accept-Encoding": "identity"}
+        range_req = urllib.request.Request(url, headers=range_headers)
+        with opener.open(range_req) as resp:
+            resp.read(1)  # consume minimal body
+            if resp.status == 206:
+                # Parse Content-Range: bytes 0-0/TOTAL
+                cr = resp.headers.get("Content-Range", "")
+                total = 0
+                if "/" in cr:
+                    with contextlib.suppress(ValueError, IndexError):
+                        total = int(cr.rsplit("/", 1)[1])
+                return _ProbeResult(
+                    content_length=total,
+                    final_url=resp.url,
+                    range_ok=True,
+                )
+            # Server returned 200 — no range support
+            return _ProbeResult(
+                content_length=int(resp.headers.get("Content-Length", 0)),
+                final_url=resp.url,
+                range_ok=False,
+            )
+    except (OSError, urllib.error.URLError):
+        return None
+
+
 def download_blob(
     repo: str,
     digest: str,
@@ -55,6 +120,8 @@ def download_blob(
     registry: str = "",
     *,
     byte_progress: AggregateByteProgress | None = None,
+    abort_event: threading.Event | None = None,
+    connections: int = 1,
 ) -> str:
     """Download a blob to the layer cache; return the local file path.
 
@@ -74,6 +141,139 @@ def download_blob(
     if algo.lower() != "sha256":
         raise RuntimeError(f"Unsupported layer digest algorithm '{algo}' (only sha256 is supported).")
 
+    base = registry_base_url(registry)
+    url = f"{base}/v2/{repo}/blobs/{digest}"
+
+    if connections > 1:
+        chunks_meta_path = f"{dest}.chunks.json"
+        segments = None
+        try:
+            probe_headers = {**_ua()}
+            if token:
+                probe_headers["Authorization"] = f"Bearer {token}"
+            probe = _probe_blob(url, probe_headers)
+
+            if probe is not None and probe.range_ok and probe.content_length > 0:
+                if os.path.isfile(chunks_meta_path):
+                    try:
+                        with open(chunks_meta_path, encoding="utf-8") as f:
+                            meta = json.load(f)
+                        if meta.get("total") == probe.content_length:
+                            segments = [
+                                _Segment(
+                                    index=s["index"],
+                                    start=s["start"],
+                                    end=s["end"],
+                                    tmp_path=s["tmp_path"],
+                                )
+                                for s in meta.get("segments", [])
+                            ]
+                    except Exception:
+                        pass
+
+                if not segments:
+                    for i in range(connections + 5):
+                        with contextlib.suppress(OSError):
+                            os.remove(f"{dest}.chunk{i}.tmp")
+                    with contextlib.suppress(OSError):
+                        os.remove(chunks_meta_path)
+
+                    segments = _compute_segments(probe.content_length, connections, dest)
+                    if len(segments) == 1:
+                        raise _FallbackToSingleError
+
+                    try:
+                        meta = {
+                            "total": probe.content_length,
+                            "segments": [
+                                {
+                                    "index": s.index,
+                                    "start": s.start,
+                                    "end": s.end,
+                                    "tmp_path": s.tmp_path,
+                                }
+                                for s in segments
+                            ],
+                        }
+                        with open(chunks_meta_path, "w", encoding="utf-8") as f:
+                            json.dump(meta, f)
+                    except Exception:
+                        pass
+
+                if len(segments) == 1:
+                    raise _FallbackToSingleError
+
+                # Pre-fill byte progress with already downloaded bytes
+                if byte_progress:
+                    already_downloaded = 0
+                    for seg in segments:
+                        if os.path.isfile(seg.tmp_path):
+                            already_downloaded += os.path.getsize(seg.tmp_path)
+                    if already_downloaded:
+                        byte_progress.add(already_downloaded)
+
+                original_parsed = urllib.parse.urlparse(url)
+                final_parsed = urllib.parse.urlparse(probe.final_url)
+                seg_headers = {**_ua()}
+                if token and original_parsed.netloc == final_parsed.netloc:
+                    seg_headers["Authorization"] = f"Bearer {token}"
+
+                local_abort = abort_event or threading.Event()
+                with ThreadPoolExecutor(max_workers=len(segments)) as pool:
+                    futures = {
+                        pool.submit(
+                            _download_segment,
+                            seg,
+                            probe.final_url,
+                            seg_headers,
+                            byte_progress,
+                            local_abort,
+                        ): seg
+                        for seg in segments
+                    }
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            local_abort.set()
+                            pool.shutdown(wait=False, cancel_futures=True)
+                            raise _FallbackToSingleError from exc
+
+                success = False
+                try:
+                    with atomic_replace(dest) as tmp:
+                        with open(tmp, "wb") as out:
+                            for seg in sorted(segments, key=lambda s: s.index):
+                                with open(seg.tmp_path, "rb") as inp:
+                                    shutil.copyfileobj(inp, out, length=1 << 20)
+                            out.flush()
+                            os.fsync(out.fileno())
+
+                        # Verify the temp file BEFORE replacing dest
+                        hasher = hashlib.sha256()
+                        with open(tmp, "rb") as fh:
+                            for chunk in iter(lambda: fh.read(262144), b""):
+                                hasher.update(chunk)
+                        actual_hex = hasher.hexdigest()
+                        if actual_hex != expected_hex.lower():
+                            raise RuntimeError(
+                                f"Layer integrity check failed for digest '{digest}': "
+                                f"expected {expected_hex}, got {actual_hex}."
+                            )
+                    success = True
+                    return dest
+                finally:
+                    if success:
+                        for seg in segments:
+                            with contextlib.suppress(OSError):
+                                os.remove(seg.tmp_path)
+                        with contextlib.suppress(OSError):
+                            os.remove(chunks_meta_path)
+        except _FallbackToSingleError:
+            pass
+        except Exception:
+            raise
+
     last_exc: BaseException | None = None
     for attempt in range(_MAX_RETRIES + 1):
         if attempt > 0:
@@ -81,8 +281,6 @@ def download_blob(
             warn(f"Retry {attempt}/{_MAX_RETRIES} in {delay}s (reason: {last_exc})...")
             time.sleep(delay)
 
-        base = registry_base_url(registry)
-        url = f"{base}/v2/{repo}/blobs/{digest}"
         headers = {**_ua()}
         if token:
             headers["Authorization"] = f"Bearer {token}"
@@ -97,6 +295,8 @@ def download_blob(
                     downloaded = 0
                     unsent = 0  # bytes not yet reported to aggregate
                     while True:
+                        if abort_event is not None and abort_event.is_set():
+                            raise KeyboardInterrupt
                         chunk = resp.read(_READ_CHUNK)
                         if not chunk:
                             break

@@ -83,6 +83,10 @@ def layer_download_workers() -> int:
     return max(1, min(count, MAX_LAYER_DOWNLOAD_WORKERS))
 
 
+# — segmented download (per-file multi-connection) —
+MIN_SEGMENT_BYTES = 4 * 1024 * 1024  # 4 MiB — don't split below this per segment
+
+
 if IS_TERMUX:
     DEFAULT_PATH_ENV = (
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

@@ -1,6 +1,7 @@
 import json
 import os
 import ssl
+import threading
 import typing
 import urllib.error
 import urllib.request
@@ -83,6 +84,10 @@ def _download_layers_parallel(
     parallel = len(pending) > 1
     total_bytes = sum(layer.get("size", 0) or 0 for _, layer in pending) if parallel else 0
     aggregate = AggregateByteProgress(total_bytes, label="layers") if parallel else None
+    abort_event = threading.Event()
+
+    workers_limit = layer_download_workers()
+    connections_per_layer = workers_limit if len(pending) == 1 else max(1, workers_limit // 2)
 
     def _download_one(item: tuple[int, dict[str, typing.Any]]) -> None:
         i, layer = item
@@ -92,7 +97,15 @@ def _download_layers_parallel(
         size_str = f" ({fmt_size(size)})" if size else ""
         log_info(f"{short_id}: Downloading layer {i + 1}/{n_layers}{size_str}...")
         try:
-            download_blob(repo, digest, token or "", registry, byte_progress=aggregate)
+            download_blob(
+                repo,
+                digest,
+                token or "",
+                registry,
+                byte_progress=aggregate,
+                abort_event=abort_event,
+                connections=connections_per_layer,
+            )
         except urllib.error.HTTPError as dl_err:
             if dl_err.code in (401, 403):
                 raise RuntimeError(auth_denied_msg(image_ref, dl_err.code)) from dl_err
@@ -105,12 +118,17 @@ def _download_layers_parallel(
             _download_one(pending[0])
             return
 
-        workers = min(layer_download_workers(), len(pending))
+        workers = min(workers_limit, len(pending))
         log_info(f"Downloading {len(pending)} layer(s) with {workers} workers...")
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(_download_one, item): item for item in pending}
-            for future in as_completed(futures):
-                future.result()
+            try:
+                for future in as_completed(futures):
+                    future.result()
+            except KeyboardInterrupt:
+                abort_event.set()
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
     finally:
         if aggregate is not None:
             aggregate.clear()
