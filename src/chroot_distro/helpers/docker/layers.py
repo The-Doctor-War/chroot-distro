@@ -1,4 +1,5 @@
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -19,9 +20,11 @@ from chroot_distro.helpers.docker.transport import (
     registry_base_url,
 )
 from chroot_distro.helpers.download import (
+    _SOCKET_TIMEOUT,
     _compute_segments,
     _download_segment,
     _FallbackToSingleError,
+    _probe_url,
     _ProbeResult,
     _Segment,
 )
@@ -64,53 +67,14 @@ def _is_retryable(exc: BaseException) -> bool:
 def _probe_blob(url: str, headers: dict[str, str]) -> _ProbeResult | None:
     """Send HEAD (or fallback GET Range:0-0) to discover size + Range support.
 
+    Uses ``auth_opener()`` so that registry auth tokens and cross-host
+    redirect stripping are handled correctly.
+
     Returns *None* on any network error so the caller can fall back silently.
     """
     opener = auth_opener()
-    # --- 1st try: HEAD ---
-    try:
-        head_req = urllib.request.Request(url, headers=headers, method="HEAD")
-        with opener.open(head_req) as resp:
-            content_length = int(resp.headers.get("Content-Length", 0))
-            accept_ranges = (resp.headers.get("Accept-Ranges", "")).lower()
-            range_ok = accept_ranges == "bytes"
-            return _ProbeResult(
-                content_length=content_length,
-                final_url=resp.url,
-                range_ok=range_ok,
-            )
-    except urllib.error.HTTPError as exc:
-        if exc.code != 405:
-            return None  # non-405 → give up probing
-    except (OSError, urllib.error.URLError):
-        return None
-
-    # --- 2nd try: GET Range: bytes=0-0 ---
-    try:
-        range_headers = {**headers, "Range": "bytes=0-0", "Accept-Encoding": "identity"}
-        range_req = urllib.request.Request(url, headers=range_headers)
-        with opener.open(range_req) as resp:
-            resp.read(1)  # consume minimal body
-            if resp.status == 206:
-                # Parse Content-Range: bytes 0-0/TOTAL
-                cr = resp.headers.get("Content-Range", "")
-                total = 0
-                if "/" in cr:
-                    with contextlib.suppress(ValueError, IndexError):
-                        total = int(cr.rsplit("/", 1)[1])
-                return _ProbeResult(
-                    content_length=total,
-                    final_url=resp.url,
-                    range_ok=True,
-                )
-            # Server returned 200 — no range support
-            return _ProbeResult(
-                content_length=int(resp.headers.get("Content-Length", 0)),
-                final_url=resp.url,
-                range_ok=False,
-            )
-    except (OSError, urllib.error.URLError):
-        return None
+    open_fn = functools.partial(opener.open, timeout=_SOCKET_TIMEOUT)
+    return _probe_url(url, headers, open_fn=open_fn)
 
 
 def download_blob(
@@ -234,6 +198,10 @@ def download_blob(
                     for future in as_completed(futures):
                         try:
                             future.result()
+                        except KeyboardInterrupt:
+                            local_abort.set()
+                            pool.shutdown(wait=False, cancel_futures=True)
+                            raise
                         except Exception as exc:
                             local_abort.set()
                             pool.shutdown(wait=False, cancel_futures=True)
@@ -290,7 +258,7 @@ def download_blob(
         try:
             with atomic_replace(dest) as tmp:
                 opener = auth_opener()
-                with opener.open(req) as resp, open(tmp, "wb") as fh:
+                with opener.open(req, timeout=_SOCKET_TIMEOUT) as resp, open(tmp, "wb") as fh:
                     total = int(resp.headers.get("Content-Length", 0))
                     downloaded = 0
                     unsent = 0  # bytes not yet reported to aggregate
