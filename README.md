@@ -1054,5 +1054,6 @@ DJkMCnBAFG14TV3BqZKmbbjD8Pi1zKLLG6
 - [proot-distro](https://github.com/termux/proot-distro) — architecture
   and CLI design inspiration.
 - [pyLoad](https://github.com/pyload/pyload) — sliding-window speed tracking, token-bucket rate limiting, and connection resilience algorithms.
+- [distrobox](https://github.com/89luca89/distrobox/) - shared-display option improvements 
 - [Magisk-Modules-Alt-Repo/chroot-distro](https://github.com/Magisk-Modules-Alt-Repo/chroot-distro)
 - [ravindu644/Ubuntu-Chroot](https://github.com/ravindu644/Ubuntu-Chroot)
