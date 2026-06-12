@@ -426,11 +426,11 @@ chroot-distro login ubuntu --get-chroot-cmd
 | Option | Description |
 |---|---|
 | `-u`, `--user USER` | Log in as USER (default: `root`). Accepts `name`, numeric `uid`, `name:group`, or `uid:gid`. |
-| `--isolated` | Reduce host exposure and enable namespace isolation (mount, PID, UTS, IPC via `unshare`/`nsenter`). On Termux: also skip Android system, storage, and `$PREFIX` binds unless you opt in with `--shared-*` or `--bind`. On Linux: skip default `/tmp` and display sharing unless `--shared-tmp` or `--shared-display`. Mutually exclusive with `--minimal`. |
+| `--isolated` | Reduce host exposure and enable namespace isolation (mount, PID, UTS, IPC via `unshare`/`nsenter`). On Termux: also skip Android system, storage, and `$PREFIX` binds unless you opt in with `--shared-*` or `--bind`. On Linux: skip default `/tmp` unless `--shared-tmp`. Mutually exclusive with `--minimal`. |
 | `--minimal` | Bare minimum chroot: core pseudo-filesystems only (`/dev`, `/proc`, `/sys`, plus `/run`, `/dev/pts`, `/dev/shm` when present). Stripped guest environment. Mutually exclusive with `--isolated`. |
 | `--shared-home` | Bind the invoking user's host home into the guest home (or `/root` for root). On Termux, binds `TERMUX_HOME`. |
 | `--shared-tmp` | Bind host tmp (`/tmp` on Linux, `$PREFIX/tmp` on Termux) to `/tmp` in the guest. On Linux, included by default unless `--isolated`. |
-| `--shared-display` | Share the host display server (X11 and Wayland), audio (PulseAudio/PipeWire), and D-Bus session bus with the container. On Linux, active by default unless `--isolated` or `--minimal`. On Termux, opt-in only. `--shared-x11` is accepted as a backward-compatible alias. |
+| `--shared-display` | Share the host display server (X11 and Wayland), audio (PulseAudio/PipeWire), and D-Bus session bus with the container. Opt-in only. `--shared-x11` is accepted as a backward-compatible alias. |
 | `-b`, `--bind SRC[:DST]` | Bind-mount a custom host path (repeatable). `DST` must be an absolute guest path. |
 | `--hostname STRING` | Hostname inside the container (default: `localhost`). |
 | `-w`, `--work-dir PATH` | Initial working directory (default: user's home). |
@@ -438,8 +438,7 @@ chroot-distro login ubuntu --get-chroot-cmd
 | `--get-chroot-cmd` | Print the fully assembled `env` + `chroot` command line and exit. |
 
 #### Display sharing
-On Linux, display sharing is active when use `--shared-display` on when `--isolated`
-is set. `--shared-x11` is accepted as a backward-compatible alias.
+Display sharing is active when using `--shared-display` (or `--shared-x11` as a backward-compatible alias).
 > It work best on regular Linux and in Termux it doesn't have all the options
 
 Display sharing forwards four subsystems from the invoking host session into
@@ -557,8 +556,7 @@ entries win):
 4. Your `--env VAR=VALUE` entries.
 5. `HOME`, `USER`, `TERM` (default `xterm-256color`), `COLORTERM`
    (when set on the host).
-6. On Linux (unless `--isolated` or `--minimal`): display and audio vars
-   when display sharing is active (default mode or explicit `--shared-display`):
+6. When display sharing is active (via `--shared-display`):
    `DISPLAY`, `XAUTHORITY`, `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`,
    `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`,
    `PULSE_SERVER`, `DBUS_SESSION_BUS_ADDRESS`. Your `--env` entries override

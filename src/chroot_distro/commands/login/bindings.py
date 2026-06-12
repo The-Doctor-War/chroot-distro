@@ -440,13 +440,13 @@ def get_bindings(
             if os.path.exists(host_x11):
                 binds.append((host_x11, "/tmp/.X11-unix"))
     else:
-        if shared_display or not isolated:
+        if shared_display:
             x11_path = "/tmp/.X11-unix"
             if os.path.exists(x11_path):
                 binds.append((x11_path, x11_path))
 
     # 5b. Display auth file binds (Linux only; runtime dir is covered by /run)
-    if not IS_TERMUX and (shared_display or not isolated) and display_auth_binds:
+    if not IS_TERMUX and shared_display and display_auth_binds:
         bound_srcs = {src for src, _ in binds}
         for path in display_auth_binds:
             if os.path.exists(path) and path not in bound_srcs:

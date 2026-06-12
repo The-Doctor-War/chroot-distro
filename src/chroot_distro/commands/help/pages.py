@@ -359,7 +359,7 @@ HELP_PAGES: dict[str, dict[str, typing.Any]] = {
                 + (
                     " Takes priority over Isolated Mode. Already included in default mode. --shared-x11 accepted as alias."
                     if IS_TERMUX
-                    else " On Linux, active by default unless --isolated. Forwards DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR, WAYLAND_DISPLAY, PULSE_SERVER, and DBUS_SESSION_BUS_ADDRESS. --shared-x11 accepted as a backward-compatible alias."
+                    else " On Linux, opt-in only. Forwards DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR, WAYLAND_DISPLAY, PULSE_SERVER, and DBUS_SESSION_BUS_ADDRESS. --shared-x11 accepted as a backward-compatible alias."
                 ),
             ),
             (
@@ -540,7 +540,7 @@ HELP_PAGES: dict[str, dict[str, typing.Any]] = {
                 + (
                     " Takes priority over Isolated Mode. Already included in default mode. --shared-x11 accepted as alias."
                     if IS_TERMUX
-                    else " On Linux, active by default unless --isolated. Forwards DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR, WAYLAND_DISPLAY, PULSE_SERVER, and DBUS_SESSION_BUS_ADDRESS. --shared-x11 accepted as a backward-compatible alias."
+                    else " On Linux, opt-in only. Forwards DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR, WAYLAND_DISPLAY, PULSE_SERVER, and DBUS_SESSION_BUS_ADDRESS. --shared-x11 accepted as a backward-compatible alias."
                 ),
             ),
             (
