@@ -94,7 +94,7 @@ effective user for mutating operations must be **root** (see
 3. Install Chroot-Distro:
 
 ```sh
-pkg install python mount-utils
+pkg install coreutils sudo python mount-utils
 pip install chroot-distro
 ```
 
